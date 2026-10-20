@@ -760,7 +760,11 @@ def _cache_base() -> Path:
 def _doctor(args: argparse.Namespace) -> ExitCode:
     """Report what the environment offers, and exit 0 when it is usable."""
     found = discover.candidates(args.libclang, os.environ)
-    library = discover.load(args.libclang, required_major=args.require_libclang)
+    library = discover.load(
+        args.libclang,
+        required_major=args.require_libclang,
+        found=found,
+    )
     if args.compile_commands is not None:
         database = Path(args.compile_commands)
         units = frontend.load_compile_commands(database)

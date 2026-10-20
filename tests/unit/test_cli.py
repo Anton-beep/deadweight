@@ -804,10 +804,43 @@ def test_doctor_prints_the_rejected_candidate_trail(
     assert code == cli.ExitCode.CLEAN
     printed = capsys.readouterr().out
     assert "## search trail" in printed
-    assert "`libclang.so` (system-path)" in printed
+    assert "`llvm-15/lib/libclang.so` (system-path)" in printed
     assert rejected.reason in printed
     assert "/opt/llvm-15" not in printed
 
+
+def test_doctor_searches_the_host_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The trail and the winner come from one search, so no path is probed twice."""
+    monkeypatch.chdir(tmp_path)
+    library = cindex.LibClang(
+        path="/opt/llvm/lib/libclang.so",
+        version="22.1.8",
+        banner="clang version 22.1.8",
+        api={"clang_createIndex": True},
+    )
+    searches: list[int] = []
+
+    def search(
+        *_args: object,
+        **_kwargs: object,
+    ) -> list[discover.Candidate]:
+        """Count the searches the doctor runs, and answer with one library."""
+        searches.append(len(searches))
+        return [
+            discover.Candidate(path=library.path, origin="system-path", lib=library),
+        ]
+
+    monkeypatch.setattr(discover, "candidates", search)
+
+    code = cli.main(["doctor"])
+
+    assert code == cli.ExitCode.CLEAN
+    assert library.path in capsys.readouterr().out
+    assert len(searches) == 1
 
 
 def test_doctor_with_a_missing_compile_database_exits_1(

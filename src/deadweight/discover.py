@@ -121,19 +121,26 @@ def load(
     explicit: str | None = None,
     *,
     required_major: int | None = None,
+    found: Sequence[Candidate] | None = None,
 ) -> cindex.LibClang:
     """The first usable libclang the search finds, or a :class:`LibClangError`.
+
+    ``found`` is a search the caller has already run, which ``deadweight doctor``
+    passes so that one report does not probe every path on the host twice; ``None``
+    runs the search here.
 
     ``required_major`` is the ``--require-libclang`` contract: a version that does not
     match it is an error rather than a surprise, so a CI job that pins a major version
     cannot silently run against another one.
     """
-    found = candidates(explicit, os.environ)
+    trail: Sequence[Candidate] = (
+        candidates(explicit, os.environ) if found is None else found
+    )
     designated = explicit or os.environ.get(ENV_VAR, "")
     considered = (
-        [candidate for candidate in found if candidate.path == designated]
+        [candidate for candidate in trail if candidate.path == designated]
         if designated
-        else found
+        else trail
     )
     for candidate in considered:
         library = candidate.lib

@@ -43,7 +43,7 @@ reason = "kept for the termux build until 2027"
 until = "2027-01-01"
 ```
 
-Every `[[ignore]]` entry needs a `reason`; `until` is optional and parsed as a date. Matching is exact against the name the report prints, which is the unqualified spelling: `example::LegacyShim` names nothing today, and `--strict-ignores` reports it as stale instead of letting a tail match quiet an unrelated `other::LegacyShim`. An ignored symbol is suppressed from `candidates` and `dead_anywhere`, and `--strict-ignores` turns an entry that matches nothing, or one whose `until` has passed, into exit 1, so the allowlist cannot rot into a permanent hole.
+Every `[[ignore]]` entry needs a `reason`; `until` is optional and parsed as a date. Matching is exact against the name the report prints: unqualified unless the linker tier named a fully qualified symbol. Without the linker tier that name is the unqualified spelling, so `example::LegacyShim` names nothing today, and `--strict-ignores` reports it as stale instead of letting a tail match quiet an unrelated `other::LegacyShim`. An ignored symbol is suppressed from `candidates` and `dead_anywhere`, and `--strict-ignores` turns an entry that matches nothing, or one whose `until` has passed, into exit 1, so the allowlist cannot rot into a permanent hole.
 
 ## Run
 
@@ -111,7 +111,7 @@ A candidate row also carries two hints that cost nothing to compute and catch wh
 | 3 | the linker or the object symbols contradict the graph |
 | 4 | `--fail-on` tripped |
 
-Precedence is `2` before `3` before `4` before `0`: an incomplete graph outranks everything, because no verdict is trustworthy. An incomplete run writes no report at all, because a report with one translation unit silently missing reads exactly like a clean one.
+Precedence is `2` before `3` before `4` before `0`: an incomplete graph outranks everything, because no verdict is trustworthy. Exit `1` is not part of that ordering: a usage or environment error, such as a gc report the run was pointed at that does not exist, is decided before any scan starts, so there is no verdict to rank it against. An incomplete run writes no report at all, because a report with one translation unit silently missing reads exactly like a clean one.
 
 ## Linker GC cross-check (optional, strongest evidence)
 

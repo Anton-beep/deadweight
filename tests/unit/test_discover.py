@@ -227,6 +227,22 @@ def test_load_returns_the_first_usable_candidate(
     assert discover.load().path == FOUND
 
 
+def test_load_accepts_a_search_the_caller_already_ran(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller that holds the trail hands it in, so no path is probed twice."""
+    bare_host(monkeypatch)
+    monkeypatch.setattr(discover, "_expand", installed_under([FOUND]))
+    found = discover.candidates(None, {})
+    monkeypatch.setattr(
+        discover,
+        "candidates",
+        lambda *args, **kwargs: pytest.fail("the search ran a second time"),
+    )
+
+    assert discover.load(found=found).path == FOUND
+
+
 def test_load_requires_the_requested_major_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

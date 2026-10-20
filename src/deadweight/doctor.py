@@ -6,8 +6,10 @@ library, its version, every API entry point the tool probed, whether the linker 
 is available on this machine, and the trail of every path the search considered and
 why it lost. Each fact is one line of markdown, and the lists are sorted, so two runs
 on the same machine differ only when the machine did. Only the chosen library keeps
-its absolute path: every other path is spelt by its file name, because the trail is
-issue-report material and must not carry the checkout's layout.
+its absolute path: every other path is spelt by its last three components, without the
+root, because the trail is issue-report material that must not carry the checkout's
+layout, yet a bare file name would print every ``llvm-*`` prefix's
+``libclang.so.1`` alike.
 """
 
 from __future__ import annotations
@@ -98,9 +100,19 @@ _LOST_TO_EARLIER_TIER = "usable, but an earlier candidate won the search"
 
 
 def _without_absolute_paths(text: str) -> str:
-    """Reduce every absolute path in ``text`` to its file name.
+    """Reduce every absolute path in ``text`` to the part that names its library.
 
     The chosen library is the one path the operator needs verbatim; the rest of the
     trail is diagnostic prose that goes into public issue reports.
     """
-    return _ABSOLUTE_PATH.sub(lambda match: Path(match.group()).name, text)
+    return _ABSOLUTE_PATH.sub(lambda match: _trail_path(match.group()), text)
+
+
+def _trail_path(path: str) -> str:
+    """Spell one path the trail's way: its last three components, without the root.
+
+    Three, because a file name alone cannot tell
+    ``/usr/lib/llvm-16/lib/libclang.so.1`` from its ``llvm-18`` twin: the directory
+    that distinguishes them is separated from the library by a generic ``lib``.
+    """
+    return "/".join(Path(path).parts[-3:])

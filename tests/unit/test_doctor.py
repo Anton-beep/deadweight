@@ -95,7 +95,7 @@ def test_the_report_prints_the_search_trail_with_each_reason() -> None:
     text = doctor.report(LIB, cross_check_available=True, candidates=trail)
 
     assert "## search trail" in text
-    assert "`libclang.so` (system-path): libclang 15 is older" in text
+    assert "`llvm-15/lib/libclang.so` (system-path): libclang 15 is older" in text
     assert "/opt/llvm-15" not in text
 
 
@@ -110,6 +110,29 @@ def test_a_loadable_path_the_search_did_not_choose_says_why_it_lost() -> None:
 
     assert "usable, but an earlier candidate won the search" in text
     assert "/usr/lib" not in text
+
+
+def test_the_search_trail_tells_two_libraries_of_one_name_apart() -> None:
+    """Same-named libraries in two ``llvm-*`` prefixes stay distinguishable."""
+    trail = [
+        discover.Candidate(path=LIB.path, origin="explicit", lib=LIB),
+        discover.Candidate(
+            path="/usr/lib/llvm-16/lib/libclang.so.1",
+            origin="system-path",
+            lib=LIB,
+        ),
+        discover.Candidate(
+            path="/usr/lib/llvm-18/lib/libclang.so.1",
+            origin="system-path",
+            lib=LIB,
+        ),
+    ]
+
+    text = doctor.report(LIB, cross_check_available=True, candidates=trail)
+
+    assert "`llvm-16/lib/libclang.so.1`" in text
+    assert "`llvm-18/lib/libclang.so.1`" in text
+    assert "/usr/lib/llvm-16" not in text
 
 
 def test_the_search_trail_omits_the_chosen_library_and_empty_trails() -> None:
