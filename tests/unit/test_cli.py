@@ -222,11 +222,16 @@ def test_an_ignore_suppresses_a_candidate(
     assert any("ignore" in note for note in payload["notes"])
 
 
-def test_a_namespaced_ignore_symbol_suppresses_the_candidate(
+def test_a_qualified_ignore_symbol_does_not_suppress_a_bare_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The allowlist may name a symbol the way the manual spells it, qualified."""
+    """An entry written for one namespace must not quiet another's function.
+
+    ``qualified_name`` is empty in today's analysis, so ``topi::only_in_tests`` names
+    nothing; matching its tail would hide a real candidate instead of leaving an
+    allowlist entry the operator can see is idle.
+    """
     monkeypatch.chdir(tmp_path)
     install(monkeypatch, tmp_path, parsed(tmp_path))
     write_config(
@@ -240,7 +245,29 @@ def test_a_namespaced_ignore_symbol_suppresses_the_candidate(
 
     assert code == cli.ExitCode.CLEAN
     payload = json.loads((tmp_path / "reports" / "report.json").read_text("utf-8"))
-    assert payload["candidates"] == []
+    assert [item["name"] for item in payload["candidates"]] == ["only_in_tests"]
+    assert not any(note.startswith("ignore:") for note in payload["notes"])
+
+
+def test_a_qualified_ignore_symbol_that_names_nothing_is_stale(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--strict-ignores`` is the alarm an exact match relies on."""
+    monkeypatch.chdir(tmp_path)
+    install(monkeypatch, tmp_path, parsed(tmp_path))
+    write_config(
+        tmp_path,
+        '[scan]\nprod_roots = ["src"]\ntest_roots = ["tests"]\n'
+        '[[ignore]]\nsymbol = "topi::only_in_tests"\n'
+        'reason = "kept for the termux build"\n',
+    )
+
+    code = cli.main(["scan", "--no-cache", "--strict-ignores"])
+
+    assert code == cli.ExitCode.USAGE
+    assert "topi::only_in_tests" in capsys.readouterr().err
 
 
 def test_strict_ignores_flags_a_stale_entry(
@@ -505,6 +532,38 @@ def test_format_limits_the_reports_written(
 
     assert code == cli.ExitCode.CLEAN
     assert [path.name for path in (tmp_path / "reports").iterdir()] == ["report.json"]
+
+
+def test_an_invalid_flag_value_is_a_usage_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A refused flag value exits 1 with one line, not argparse's ``SystemExit(2)``.
+
+    Exit 2 already means "the graph is incomplete", so argparse's own code would be
+    indistinguishable from a failed parse; ``_Parser`` turns both of these into the
+    usage error a mistyped flag produces.
+    """
+    format_code = cli.main(["scan", "--format", "pdf"])
+    gate_code = cli.main(["scan", "--fail-on", "bogus"])
+
+    assert format_code == cli.ExitCode.USAGE
+    assert gate_code == cli.ExitCode.USAGE
+    err = capsys.readouterr().err
+    assert "--format" in err
+    assert "--fail-on" in err
+    assert "Traceback" not in err
+
+
+def test_a_bare_invocation_is_a_usage_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``deadweight`` with no subcommand names the missing command and exits 1."""
+    code = cli.main([])
+
+    assert code == cli.ExitCode.USAGE
+    captured = capsys.readouterr()
+    assert "command" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_a_production_root_is_required(

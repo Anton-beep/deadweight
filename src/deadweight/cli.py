@@ -109,8 +109,8 @@ class _Settings:
 
 def main(argv: list[str] | None = None) -> int:
     """Run one command and answer with the process exit code."""
-    args = parse_args(argv)
     try:
+        args = parse_args(argv)
         if args.command == "doctor":
             return int(_doctor(args))
         return int(_scan(args))
@@ -649,13 +649,14 @@ def _suppress(result: Analysis, symbol: str) -> int:
 def _named(candidate: Candidate, symbol: str) -> bool:
     """Answer whether an ``[[ignore]]`` symbol addresses this candidate.
 
-    ``qualified_name`` is empty in today's analysis, so the symbol is also matched
-    against its unqualified tail: ``topi::LegacyShim`` and ``LegacyShim`` address the
-    same function, and the qualified spelling is the one the manual documents.
+    The match is exact. Matching the unqualified tail would let an entry written for
+    ``topi::shim`` quiet an unrelated ``other::shim``, and that over-suppression is
+    silent: the operator sees a candidate leave the report instead of an allowlist
+    entry that no longer applies. ``qualified_name`` is empty in today's analysis, so
+    a qualified spelling names nothing yet; ``--strict-ignores`` reports it as stale,
+    which is the alarm the loose match would have no equivalent of.
     """
-    return symbol in (candidate.name, candidate.qualified_name) or symbol.endswith(
-        f"::{candidate.name}",
-    )
+    return symbol in (candidate.name, candidate.qualified_name)
 
 
 def _exit_code(
