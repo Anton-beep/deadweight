@@ -1,0 +1,9 @@
+{
+  "candidates": ["tree/src/box.cpp:value"],
+  "keepers": [],
+  "special_members": ["tree/src/box.cpp:Box"],
+  "dead_anywhere": [],
+  "entry_points": [],
+  "ambiguous": [],
+  "exit": 0
+}

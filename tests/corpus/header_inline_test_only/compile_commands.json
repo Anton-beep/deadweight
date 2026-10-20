@@ -1,0 +1,12 @@
+[
+  {
+    "directory": ".",
+    "file": "tree/src/consumer.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/src/consumer.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "tree/tests/helper_test.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/tests/helper_test.cpp"]
+  }
+]

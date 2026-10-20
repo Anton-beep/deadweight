@@ -1,0 +1,12 @@
+[
+  {
+    "directory": ".",
+    "file": "tree/src/recurse.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/src/recurse.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "tree/tests/recurse_test.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/tests/recurse_test.cpp"]
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "candidates": ["tree/src/pipeline.cpp:run_pipeline"],
+  "keepers": [],
+  "special_members": [],
+  "dead_anywhere": [
+    "tree/include/pipeline.hpp:doubled",
+    "tree/src/pipeline.cpp:transform"
+  ],
+  "entry_points": [],
+  "ambiguous": [],
+  "exit": 0
+}

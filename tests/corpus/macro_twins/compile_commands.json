@@ -1,0 +1,7 @@
+[
+  {
+    "directory": ".",
+    "file": "tree/src/twins.cpp",
+    "arguments": ["c++", "-std=c++17", "tree/src/twins.cpp"]
+  }
+]

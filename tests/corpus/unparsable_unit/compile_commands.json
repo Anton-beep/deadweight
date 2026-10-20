@@ -1,0 +1,12 @@
+[
+  {
+    "directory": ".",
+    "file": "tree/src/broken.cpp",
+    "arguments": ["c++", "-std=c++17", "tree/src/broken.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "tree/src/fine.cpp",
+    "arguments": ["c++", "-std=c++17", "tree/src/fine.cpp"]
+  }
+]

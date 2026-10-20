@@ -1,0 +1,13 @@
+{
+  "candidates": [],
+  "keepers": [
+    "tree/include/chain.hpp:~Interface",
+    "tree/include/chain.hpp:compute",
+    "tree/src/chain.cpp:compute"
+  ],
+  "special_members": [],
+  "dead_anywhere": [],
+  "entry_points": [],
+  "ambiguous": [],
+  "exit": 0
+}

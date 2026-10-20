@@ -1,0 +1,9 @@
+{
+  "candidates": [],
+  "keepers": [],
+  "special_members": [],
+  "dead_anywhere": [],
+  "entry_points": [],
+  "ambiguous": ["tree/src/twins.cpp:twin_alpha", "tree/src/twins.cpp:twin_beta"],
+  "exit": 0
+}

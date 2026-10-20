@@ -1,0 +1,17 @@
+[
+  {
+    "directory": ".",
+    "file": "tree/src/api.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/src/api.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "tree/src/program.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/src/program.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "tree/tests/api_test.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/tests/api_test.cpp"]
+  }
+]

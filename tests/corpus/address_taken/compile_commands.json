@@ -1,0 +1,7 @@
+[
+  {
+    "directory": ".",
+    "file": "tree/src/handlers.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/src/handlers.cpp"]
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "candidates": ["tree/src/overload_int.cpp:convert"],
+  "keepers": [],
+  "special_members": [],
+  "dead_anywhere": ["tree/src/overload_double.cpp:convert"],
+  "entry_points": [],
+  "ambiguous": [],
+  "exit": 0
+}

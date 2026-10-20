@@ -1,0 +1,12 @@
+[
+  {
+    "directory": ".",
+    "file": "tree/src/pipeline.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/src/pipeline.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "tree/tests/pipeline_test.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/tests/pipeline_test.cpp"]
+  }
+]

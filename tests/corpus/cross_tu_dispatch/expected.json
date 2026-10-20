@@ -1,0 +1,9 @@
+{
+  "candidates": ["tree/src/api.cpp:test_only_entry"],
+  "keepers": [],
+  "special_members": [],
+  "dead_anywhere": [],
+  "entry_points": ["tree/src/program.cpp:main"],
+  "ambiguous": [],
+  "exit": 0
+}

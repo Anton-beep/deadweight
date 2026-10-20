@@ -1,0 +1,17 @@
+[
+  {
+    "directory": ".",
+    "file": "tree/src/overload_int.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/src/overload_int.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "tree/src/overload_double.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/src/overload_double.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "tree/tests/overload_test.cpp",
+    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/tests/overload_test.cpp"]
+  }
+]
