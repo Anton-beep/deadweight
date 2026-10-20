@@ -51,7 +51,14 @@ def test_every_scan_flag_appears_in_the_readme_or_the_operator_manual(
     documented = "\n".join(
         path.read_text(encoding="utf-8") for path in (README, VERDICTS)
     )
-    assert sorted(flag for flag in flags if flag not in documented) == []
+    # A bare substring test lets ``--prod`` pass on ``--prod-binary`` and
+    # ``--gc-report`` on ``--gc-report-tests``, so the name has to end where it does.
+    undocumented = [
+        flag
+        for flag in sorted(flags)
+        if re.search(rf"{re.escape(flag)}(?![\w-])", documented) is None
+    ]
+    assert undocumented == []
 
 
 def test_the_readme_exit_codes_are_the_ones_the_cli_defines() -> None:

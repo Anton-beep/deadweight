@@ -68,7 +68,7 @@ The matrix is the contract, and the workflow in `.github/workflows/ci.yml` is th
 | `checks` | 16, 18, 20, 22 from apt.llvm.org on `ubuntu-24.04` | ruff, `mypy src`, the full `pytest` suite including the conformance corpus |
 | `canary` | the current LLVM snapshot, nightly and `workflow_dispatch` | the full `pytest` suite, non-blocking (`continue-on-error`) |
 
-The conformance corpus compiles small C++ trees with the matrix's clang and asserts their verdict sets, so a change in libclang's behaviour shows up as a corpus failure rather than as a quietly different verdict on a user's tree. The facts records are expected to be identical across the four versions except for the `compiler` block; a difference is a durability bug, not a tolerance.
+The conformance corpus copies checked-in small C++ trees — each with a checked-in `compile_commands.json` — and runs `deadweight scan` in process over the copy, asserting the verdict sets, so a change in libclang's behaviour shows up as a corpus failure rather than as a quietly different verdict on a user's tree. Nothing is compiled: the trees are sources and a database, and libclang does the parsing. The facts records are expected to be identical across the four versions except for the `compiler` block; a difference is a durability bug, not a tolerance.
 
 The nightly canary runs against LLVM `main` so that a renamed or removed entry point is visible before it is a user's bug. It never blocks a merge: a snapshot that moved under us is news, not a broken pull request. The workflow's `DEADWEIGHT_LIBCLANG` environment variable is also the documented way for anyone to run the suite against a specific library.
 

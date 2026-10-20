@@ -96,7 +96,7 @@ The buckets are deliberately separate so a verdict is auditable:
 - `keepers`: virtual/override methods with no production call site (a mock or the runtime dispatch path may call them — the static graph cannot see that) and compiler-owned `= default` / `= delete` members. Reported, never proposed for removal.
 - `special_members`: constructors, destructors, conversion operators and assignment operators. Deleting one changes construction/copy semantics, so they are listed for a human decision instead of being proposed.
 - `dead_anywhere`: defined in production, referenced by nobody at all.
-- `entry_points`: `main` and friends, reached by the C runtime rather than by a call site.
+- `entry_points`: `main`, reached by the C runtime rather than by a call site.
 - `ambiguous`: several functions share one definition anchor (macro-generated code); the graph cannot tell them apart.
 
 A candidate row also carries two hints that cost nothing to compute and catch what the graph cannot see: `header-defined` when the definition is in a header, and `referenced-by-mock` when a test path contains `mock`.

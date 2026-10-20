@@ -48,7 +48,7 @@ deadweight scan
 | --- | --- |
 | 0 | no candidates |
 | 1 | usage or environment error |
-| 2 | the graph is incomplete — a translation unit failed to parse, so no verdict is trustworthy |
+| 2 | the graph is incomplete — a translation unit failed to parse, or a `--gc-report`/`--gc-report-tests` file is missing, so no verdict is trustworthy |
 | 3 | the linker or the object symbols contradict the graph |
 | 4 | `--fail-on` tripped |
 

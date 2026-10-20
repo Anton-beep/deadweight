@@ -307,7 +307,7 @@ def _record_test_binaries(
     if gc_test_reports and not facts.tests_checked:
         notes.append(
             "gc-report (tests) has no binary symbol tables behind it "
-            "(pass --gc-test-binaries-dir): a symbol no supplied test link "
+            "(pass --test-binaries-dir): a symbol no supplied test link "
             "discarded is reported as gc-test-only on the weaker evidence that it "
             "was not discarded",
         )
