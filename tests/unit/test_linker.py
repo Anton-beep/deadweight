@@ -187,7 +187,7 @@ def test_load_gc_facts_refuses_a_report_without_function_sections(
         encoding="utf-8",
     )
     notes: list[str] = []
-    assert load_gc_facts([report], [], None, None, notes) is None
+    assert load_gc_facts([report], [], None, None, notes, scan_root=tmp_path) is None
     assert any("-ffunction-sections" in note for note in notes)
 
 
@@ -223,6 +223,7 @@ def test_cross_check_returns_the_candidates_the_link_refutes(
         analysis,
         build,
         {"client/a.cpp"},
+        scan_root=tmp_path,
         jobs=1,
         gc_reports=[gc_report],
         gc_test_reports=[],
@@ -242,6 +243,7 @@ def test_cross_check_is_unavailable_without_a_linker_view(tmp_path: Path) -> Non
         analysis,
         tmp_path / "build",
         set(),
+        scan_root=tmp_path,
         jobs=1,
         gc_reports=[],
         gc_test_reports=[],

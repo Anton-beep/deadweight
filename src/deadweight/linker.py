@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .model import Analysis, Candidate, GcFacts, ObjectSymbols
@@ -15,7 +16,6 @@ from .symbols import decide_candidate, symbol_key
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
 CONTRADICTIONS = frozenset({"refuted", "gc-refuted"})
 """The verdicts that say the graph and the linked program disagree; the run exits 3."""
@@ -262,10 +262,21 @@ def collect_test_binaries(directory: Path | None) -> list[Path]:
     )
 
 
+def _spell(path: Path, scan_root: Path) -> str:
+    """Spell one path the way the report does: relative to the scan root.
+
+    ``os.path.relpath`` answers a ``../``-prefixed path when the input is outside the
+    tree, which keeps the checkout's location out of the report without mangling a
+    sibling that merely shares a prefix with the scan root.
+    """
+    return Path(os.path.relpath(str(path), scan_root)).as_posix()
+
+
 def _record_production_binary(
     facts: GcFacts,
     prod_binary: Path | None,
     notes: list[str],
+    scan_root: Path,
 ) -> None:
     """Note whether the linked production binary can confirm that a symbol survived."""
     if prod_binary is None or not prod_binary.is_file():
@@ -276,14 +287,15 @@ def _record_production_binary(
         return
     facts.kept = collect_binary_symbols(prod_binary)
     facts.binary_checked = bool(facts.kept)
+    spelled = _spell(prod_binary, scan_root)
     if facts.binary_checked:
         notes.append(
             f"gc-report: {len(facts.kept)} symbols survived the production link "
-            f"({prod_binary})",
+            f"({spelled})",
         )
     else:
         notes.append(
-            f"gc-report: {prod_binary} has no readable symbol table (stripped?); "
+            f"gc-report: {spelled} has no readable symbol table (stripped?); "
             "gc-refuted cannot be told apart from gc-absent",
         )
 
@@ -318,12 +330,14 @@ def _record_test_binaries(
         )
 
 
-def load_gc_facts(
+def load_gc_facts(  # noqa: PLR0913 -- one argument per distinct input of the report
     gc_reports: list[Path],
     gc_test_reports: list[Path],
     prod_binary: Path | None,
     test_binaries_dir: Path | None,
     notes: list[str],
+    *,
+    scan_root: Path,
 ) -> GcFacts | None:
     """Read the linker reports; None when they cannot support a verdict."""
     if not gc_reports and not gc_test_reports:
@@ -334,15 +348,15 @@ def load_gc_facts(
         facts.prod.update(report.symbols)
         facts.bare_sections += report.bare_sections
         notes.append(
-            f"gc-report {path}: {len(report.symbols)} discarded function section(s) "
-            f"in {report.lines} removal line(s)",
+            f"gc-report {_spell(path, scan_root)}: {len(report.symbols)} discarded "
+            f"function section(s) in {report.lines} removal line(s)",
         )
     for path in gc_test_reports:
         report = parse_gc_report(path.read_text(encoding="utf-8", errors="replace"))
         facts.tests.update(report.symbols)
         notes.append(
-            f"gc-report (tests) {path}: {len(report.symbols)} discarded function "
-            f"section(s) in {report.lines} removal line(s)",
+            f"gc-report (tests) {_spell(path, scan_root)}: {len(report.symbols)} "
+            f"discarded function section(s) in {report.lines} removal line(s)",
         )
     if not facts.prod:
         notes.append(
@@ -351,7 +365,7 @@ def load_gc_facts(
             "link with -Wl,--gc-sections -Wl,--print-gc-sections",
         )
         return None
-    _record_production_binary(facts, prod_binary, notes)
+    _record_production_binary(facts, prod_binary, notes, scan_root)
     if facts.bare_sections:
         notes.append(
             f"gc-report: {facts.bare_sections} bare .text section(s) skipped "
@@ -406,6 +420,7 @@ def run_cross_check(  # noqa: PLR0913 -- one argument per distinct input of the 
     prod_build_dir: Path,
     prod_sources: set[str],
     *,
+    scan_root: Path,
     jobs: int,
     gc_reports: list[Path],
     gc_test_reports: list[Path],
@@ -429,6 +444,7 @@ def run_cross_check(  # noqa: PLR0913 -- one argument per distinct input of the 
         prod_binary,
         test_binaries_dir,
         analysis.notes,
+        scan_root=scan_root,
     )
     facts = ObjectSymbols()
     if prod_build_dir.is_dir():
@@ -443,12 +459,13 @@ def run_cross_check(  # noqa: PLR0913 -- one argument per distinct input of the 
             )
         else:
             analysis.notes.append(
-                f"nm/readelf found no readable objects under {prod_build_dir}: "
+                f"nm/readelf found no readable objects under "
+                f"{_spell(prod_build_dir, scan_root)}: "
                 "gc-refuted cannot be told apart from gc-absent",
             )
     else:
         analysis.notes.append(
-            f"production build tree {prod_build_dir} not found "
+            f"production build tree {_spell(prod_build_dir, scan_root)} not found "
             "(pass --prod-build-dir): the nm/readelf ladder is unavailable",
         )
     if not facts.defined and gc is None:

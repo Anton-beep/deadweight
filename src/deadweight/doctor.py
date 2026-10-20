@@ -2,25 +2,41 @@
 
 ``deadweight doctor`` exists because a report is only as trustworthy as the compiler
 that produced it. The output is what a user pastes into an issue, so it names the
-library, its version, every API entry point the tool probed, and whether the linker
-tier is available on this machine. Each fact is one line of markdown, and the symbol
-list is sorted, so two runs on the same machine differ only when the machine did.
+library, its version, every API entry point the tool probed, whether the linker tier
+is available on this machine, and the trail of every path the search considered and
+why it lost. Each fact is one line of markdown, and the lists are sorted, so two runs
+on the same machine differ only when the machine did. Only the chosen library keeps
+its absolute path: every other path is spelt by its file name, because the trail is
+issue-report material and must not carry the checkout's layout.
 """
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from .cindex import LibClang
+    from .discover import Candidate
 
 FLOOR = 16
 """The oldest libclang the C API contract covers."""
 
 _DELETED_SYMBOL = "clang_CXXMethod_isDeleted"
 
+_ABSOLUTE_PATH = re.compile(r"(?<![\w:/])/(?:[^\s/`]+/)*[^\s/`]+")
+"""An absolute path as a rejection message spells one, so it can be reduced."""
 
-def report(lib: LibClang, *, cross_check_available: bool) -> str:
+
+def report(
+    lib: LibClang,
+    *,
+    cross_check_available: bool,
+    candidates: Sequence[Candidate] = (),
+) -> str:
     """Render what was found as markdown, one fact per line."""
     lines = [
         "# deadweight doctor",
@@ -52,4 +68,39 @@ def report(lib: LibClang, *, cross_check_available: bool) -> str:
         f"- `{name}`: {'available' if available else 'missing'}"
         for name, available in sorted(lib.api.items())
     )
+    lines.extend(_search_trail(lib.path, candidates))
     return "\n".join(lines) + "\n"
+
+
+def _search_trail(chosen: str, candidates: Sequence[Candidate]) -> list[str]:
+    """Render every path the search considered that is not the chosen library.
+
+    A usable path that was not chosen lost to an earlier tier; a path that could not
+    be loaded carries the reason the probe gave. Both are shown, because "which
+    library did the search see and why did it pick this one" is the question the
+    trail answers.
+    """
+    lost = [candidate for candidate in candidates if candidate.path != chosen]
+    if not lost:
+        return []
+    lines = ["", "## search trail", "", "Every other path the search considered:"]
+    lines.extend(
+        f"- `{_without_absolute_paths(candidate.path)}` "
+        f"({candidate.origin}): "
+        f"{_without_absolute_paths(candidate.reason) or _LOST_TO_EARLIER_TIER}"
+        for candidate in lost
+    )
+    return lines
+
+
+_LOST_TO_EARLIER_TIER = "usable, but an earlier candidate won the search"
+"""Why a loadable library that the search did not choose lost."""
+
+
+def _without_absolute_paths(text: str) -> str:
+    """Reduce every absolute path in ``text`` to its file name.
+
+    The chosen library is the one path the operator needs verbatim; the rest of the
+    trail is diagnostic prose that goes into public issue reports.
+    """
+    return _ABSOLUTE_PATH.sub(lambda match: Path(match.group()).name, text)

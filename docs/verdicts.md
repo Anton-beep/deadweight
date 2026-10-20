@@ -38,12 +38,12 @@ test_binaries_dir = "build-gc-tests"
 fail_on = "candidates"
 
 [[ignore]]
-symbol = "example::LegacyShim"
+symbol = "LegacyShim"
 reason = "kept for the termux build until 2027"
 until = "2027-01-01"
 ```
 
-Every `[[ignore]]` entry needs a `reason`; `until` is optional and parsed as a date. An ignored symbol is suppressed from `candidates` and `dead_anywhere`, and `--strict-ignores` turns an entry that matches nothing, or one whose `until` has passed, into exit 1, so the allowlist cannot rot into a permanent hole.
+Every `[[ignore]]` entry needs a `reason`; `until` is optional and parsed as a date. Matching is exact against the name the report prints, which is the unqualified spelling: `example::LegacyShim` names nothing today, and `--strict-ignores` reports it as stale instead of letting a tail match quiet an unrelated `other::LegacyShim`. An ignored symbol is suppressed from `candidates` and `dead_anywhere`, and `--strict-ignores` turns an entry that matches nothing, or one whose `until` has passed, into exit 1, so the allowlist cannot rot into a permanent hole.
 
 ## Run
 
@@ -106,8 +106,8 @@ A candidate row also carries two hints that cost nothing to compute and catch wh
 | Code | Meaning |
 | --- | --- |
 | 0 | no candidates, or the gate did not trip |
-| 1 | usage or environment error: a flag, the configuration file, the compilation database or libclang |
-| 2 | the graph is incomplete — a translation unit failed to parse, or a `--gc-report` file is missing, so no verdict is trustworthy |
+| 1 | usage or environment error: a flag, the configuration file, the compilation database, a missing gc report, or libclang |
+| 2 | the graph is incomplete — a translation unit failed to parse, so no verdict is trustworthy |
 | 3 | the linker or the object symbols contradict the graph |
 | 4 | `--fail-on` tripped |
 

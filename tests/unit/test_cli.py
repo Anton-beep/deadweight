@@ -10,7 +10,12 @@ the real pipeline is exercised by ``tests/integration/test_end_to_end.py``.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+import pytest
 
 from deadweight import cindex, cli, config, discover, frontend, linker
 from deadweight.frontend import TranslationUnit
@@ -27,9 +32,6 @@ from deadweight.model import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
-
-    import pytest
 
 PROD = "src/core.cpp"
 BROKEN = "src/broken.cpp"
@@ -335,6 +337,46 @@ def test_missing_compile_commands_exits_1(
     assert "absent.json" in capsys.readouterr().err
 
 
+def test_missing_gc_report_exits_1_before_the_scan_starts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A named gc report that is not there is a bad argument, not a bad graph.
+
+    The graph has not been built yet, so exit 2 would name a failure that did not
+    happen; the run refuses before it loads a library, parses a unit or writes a
+    report, and names the missing file.
+    """
+    monkeypatch.chdir(tmp_path)
+    install(monkeypatch, tmp_path, parsed(tmp_path))
+
+    def forbidden(*_args: object, **_kwargs: object) -> list[Facts]:
+        """A scan that must never be reached."""
+        pytest.fail("the scan started before the gc report was checked")
+
+    monkeypatch.setattr(frontend, "scan", forbidden)
+
+    code = cli.main(
+        [
+            "scan",
+            "--prod",
+            "src",
+            "--tests",
+            "tests",
+            "--no-cache",
+            "--gc-report",
+            "absent.txt",
+            "--out",
+            "reports",
+        ],
+    )
+
+    assert code == cli.ExitCode.USAGE
+    assert not (tmp_path / "reports").exists()
+    assert "absent.txt" in capsys.readouterr().err
+
+
 def test_unparsable_unit_exits_2_and_writes_no_report(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -507,6 +549,87 @@ def test_the_report_quotes_no_absolute_path(
     assert str(tmp_path) not in text
 
 
+def test_a_build_tree_outside_the_scan_root_is_relative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A build tree beside the checkout is quoted relative, never absolute.
+
+    The stripping pass this replaced only knew the scan-root prefix, so a path that
+    did not start with it survived into ``report.json`` exactly as the tier spelt it.
+    """
+    root = tmp_path / "tree"
+    elsewhere = tmp_path / "elsewhere" / "build"
+    root.mkdir()
+    monkeypatch.chdir(root)
+    install(
+        monkeypatch,
+        root,
+        parsed(root),
+        cross_check=linker.run_cross_check,
+    )
+
+    code = cli.main(
+        [
+            "scan",
+            "--prod",
+            "src",
+            "--tests",
+            "tests",
+            "--no-cache",
+            "--prod-build-dir",
+            str(elsewhere),
+            "--out",
+            "reports",
+        ],
+    )
+
+    assert code == cli.ExitCode.CLEAN
+    text = (root / "reports" / "report.json").read_text(encoding="utf-8")
+    payload = json.loads(text)
+    assert any("../elsewhere/build" in note for note in payload["notes"])
+    assert str(tmp_path) not in text
+
+
+def test_a_sibling_sharing_the_scan_root_prefix_survives(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stripping the scan-root string mangled a ``/a/bc`` sibling into ``.c``."""
+    root = tmp_path / "a" / "b"
+    sibling = tmp_path / "a" / "bc" / "build"
+    root.mkdir(parents=True)
+    monkeypatch.chdir(root)
+    install(
+        monkeypatch,
+        root,
+        parsed(root),
+        cross_check=linker.run_cross_check,
+    )
+
+    code = cli.main(
+        [
+            "scan",
+            "--prod",
+            "src",
+            "--tests",
+            "tests",
+            "--no-cache",
+            "--prod-build-dir",
+            str(sibling),
+            "--out",
+            "reports",
+        ],
+    )
+
+    assert code == cli.ExitCode.CLEAN
+    text = (root / "reports" / "report.json").read_text(encoding="utf-8")
+    payload = json.loads(text)
+    assert any("../bc/build" in note for note in payload["notes"])
+    assert ".c/build" not in text
+    assert str(tmp_path) not in text
+
+
 def test_format_limits_the_reports_written(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -633,6 +756,7 @@ def test_doctor_reports_the_library_it_found(
         api={"clang_createIndex": True},
     )
     monkeypatch.setattr(discover, "load", lambda *args, **kwargs: library)
+    monkeypatch.setattr(discover, "candidates", lambda *args, **kwargs: [])
 
     code = cli.main(["doctor"])
 
@@ -640,6 +764,50 @@ def test_doctor_reports_the_library_it_found(
     printed = capsys.readouterr().out
     assert "# deadweight doctor" in printed
     assert library.path in printed
+
+
+def test_doctor_prints_the_rejected_candidate_trail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Every path the search considered is printed with why it lost.
+
+    ``docs/compatibility.md`` promises the trail, and the report is what a user
+    pastes into an issue, so each rejection has to survive with its reason - but
+    only the chosen library may keep an absolute path.
+    """
+    monkeypatch.chdir(tmp_path)
+    library = cindex.LibClang(
+        path="/opt/llvm/lib/libclang.so",
+        version="22.1.8",
+        banner="clang version 22.1.8",
+        api={"clang_createIndex": True},
+    )
+    rejected = discover.Candidate(
+        path="/opt/llvm-15/lib/libclang.so",
+        origin="system-path",
+        reason="libclang 15 is older than the supported floor",
+    )
+    monkeypatch.setattr(discover, "load", lambda *args, **kwargs: library)
+    monkeypatch.setattr(
+        discover,
+        "candidates",
+        lambda *args, **kwargs: [
+            discover.Candidate(path=library.path, origin="system-path", lib=library),
+            rejected,
+        ],
+    )
+
+    code = cli.main(["doctor"])
+
+    assert code == cli.ExitCode.CLEAN
+    printed = capsys.readouterr().out
+    assert "## search trail" in printed
+    assert "`libclang.so` (system-path)" in printed
+    assert rejected.reason in printed
+    assert "/opt/llvm-15" not in printed
+
 
 
 def test_doctor_with_a_missing_compile_database_exits_1(
@@ -656,8 +824,82 @@ def test_doctor_with_a_missing_compile_database_exits_1(
         api={"clang_createIndex": True},
     )
     monkeypatch.setattr(discover, "load", lambda *args, **kwargs: library)
+    monkeypatch.setattr(discover, "candidates", lambda *args, **kwargs: [])
 
     code = cli.main(["doctor", "--compile-commands", "absent.json"])
 
     assert code == cli.ExitCode.USAGE
     assert "absent.json" in capsys.readouterr().err
+
+
+_SETTING_CASES: list[tuple[str, str | None, str, object]] = [
+    ("--exclude", "third_party/**", "exclude", ("third_party/**",)),
+    ("--no-cascade", None, "cascade", False),
+    ("--prod-build-dir", "build-gc", "prod_build_dir", Path("build-gc")),
+    ("--prod-binary", "build-gc/app", "prod_binary", Path("build-gc/app")),
+    (
+        "--test-binaries-dir",
+        "build-gc-tests",
+        "test_binaries_dir",
+        Path("build-gc-tests"),
+    ),
+    ("--gc-report", "gc-prod.txt", "gc_reports", (Path("gc-prod.txt"),)),
+    ("--jobs", "3", "jobs", 3),
+    ("--out", "runs", "out", Path("runs")),
+    ("--format", "json", "formats", ("json",)),
+]
+"""One flag per case, with the ``_Settings`` field it has to reach and its value."""
+
+
+def _resolve_expected(root: Path, expected: object) -> object:
+    """Resolve the path-shaped expectations against the scan root, as the run does."""
+    if isinstance(expected, Path):
+        return root / expected
+    if isinstance(expected, tuple) and all(isinstance(item, Path) for item in expected):
+        return tuple(root / item for item in expected)
+    return expected
+
+
+@pytest.mark.parametrize(("flag", "value", "attribute", "expected"), _SETTING_CASES)
+def test_each_flag_reaches_the_settings(  # noqa: PLR0913, PLR0917 -- parametrized case plus two fixtures
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    flag: str,
+    value: str | None,
+    attribute: str,
+    expected: object,
+) -> None:
+    """The parsed flag lands on the ``_Settings`` field the scan reads.
+
+    The pipeline is exercised through ``main`` everywhere else, which cannot tell a
+    flag that stops being wired from a flag the pipeline ignores. This reads the
+    merged settings directly, so renaming or dropping one of these flags fails here.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "compile_commands.json").write_text("[]\n", encoding="utf-8")
+    argv = ["scan", "--prod", "src", flag]
+    if value is not None:
+        argv.append(value)
+
+    settings = cli._settings(cli.parse_args(argv))  # noqa: SLF001 -- the merged settings are the seam under test
+
+    assert getattr(settings, attribute) == _resolve_expected(tmp_path, expected)
+
+
+def test_python_m_deadweight_runs_the_scan_path(tmp_path: Path) -> None:
+    """The module entry point reaches ``scan`` and answers the documented code.
+
+    A tree with no compilation database is refused before any parsing, which is the
+    one run of the real pipeline that needs neither libclang nor a linker.
+    """
+    completed = subprocess.run(
+        [sys.executable, "-m", "deadweight", "scan", "--prod", "src"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == int(cli.ExitCode.USAGE)
+    assert "compile_commands" in completed.stderr
+    assert "Traceback" not in completed.stderr

@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a scan that is wrong, refused, or crashed.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security problems here: see [SECURITY.md](../blob/main/SECURITY.md).
+        Paste the three blocks below rather than a full report; they are what makes a
+        scan reproducible.
+  - type: input
+    id: version
+    attributes:
+      label: deadweight --version
+      description: The exact output of `deadweight --version`.
+      placeholder: deadweight 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: deadweight doctor
+      description: The full output of `deadweight doctor`, including the search trail.
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: inputs
+    attributes:
+      label: report.json inputs
+      description: The `inputs` block of the report, which records every input to the run.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The verdict you expected, and the verdict the tool gave.
+    validations:
+      required: true

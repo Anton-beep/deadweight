@@ -64,6 +64,9 @@ convention = "google"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "slow: builds and inspects the distribution, run as its own CI job",
+]
 
 [tool.mypy]
 strict = true

@@ -318,6 +318,7 @@ def _formats(text: str) -> tuple[str, ...]:
 def _scan(args: argparse.Namespace) -> ExitCode:
     """Run one scan: parse, analyse, cross-check, report, and answer the exit code."""
     settings = _settings(args)
+    _require_reports(settings)
     _require_library(settings)
     units = _units(settings)
     parsed = frontend.scan(
@@ -342,11 +343,10 @@ def _scan(args: argparse.Namespace) -> ExitCode:
         cascade=settings.cascade,
     )
     analysis.annotate_prod_mentions(result, settings.scan_root, settings.prod_roots)
-    incomplete = _incomplete(result, settings)
+    incomplete = _incomplete(result)
     if incomplete is not None:
         return incomplete
     contradicted = _cross_check(settings, result, findings)
-    _without_checkout_paths(result, settings.scan_root)
     _apply_ignores(result, settings)
     code = _exit_code(settings, result, contradicted)
     _emit(result, settings)
@@ -537,26 +537,38 @@ def _relative_facts(unit: TranslationUnit, record: Facts, scan_root: Path) -> Fa
     )
 
 
-def _incomplete(result: Analysis, settings: _Settings) -> ExitCode | None:
-    """Report every input the run could not read, and answer exit 2.
+def _require_reports(settings: _Settings) -> None:
+    """Refuse a gc report the run was pointed at before any scanning starts.
 
-    This is the only failure path that writes nothing. A report built on a graph with
-    a unit missing is worse than no report, because it reads as a clean one.
+    A missing report is a bad argument, not an incomplete graph: no translation unit
+    has been parsed yet, and exit 2 would tell the operator a unit failed. The same
+    file may be named as both a production and a test report, so the check is on the
+    union and every missing path is named at once.
     """
     missing = [
         path
         for path in (*settings.gc_reports, *settings.gc_report_tests)
         if not path.is_file()
     ]
-    if not result.failures and not missing:
+    if missing:
+        names = ", ".join(str(path) for path in missing)
+        message = f"gc report {names} does not exist"
+        raise UsageError(message)
+
+
+def _incomplete(result: Analysis) -> ExitCode | None:
+    """Report every translation unit the run could not parse, and answer exit 2.
+
+    This is the only failure path that writes nothing. A report built on a graph with
+    a unit missing is worse than no report, because it reads as a clean one.
+    """
+    if not result.failures:
         return None
     for failure in result.failures:
         print(
             f"deadweight: {failure['file']} did not parse: {failure['reason']}",
             file=sys.stderr,
         )
-    for path in missing:
-        print(f"deadweight: gc-report {path} does not exist", file=sys.stderr)
     print(
         "deadweight: the graph is incomplete, so no report was written",
         file=sys.stderr,
@@ -583,27 +595,13 @@ def _cross_check(
         result,
         settings.prod_build_dir,
         prod_sources,
+        scan_root=settings.scan_root,
         jobs=settings.jobs,
         gc_reports=list(settings.gc_reports),
         gc_test_reports=list(settings.gc_report_tests),
         prod_binary=settings.prod_binary,
         test_binaries_dir=settings.test_binaries_dir,
     )
-
-
-def _without_checkout_paths(result: Analysis, scan_root: Path) -> None:
-    """Rewrite any absolute path a note quotes into its scan-root-relative form.
-
-    The report must not carry the checkout's location, or two runs of the same tree
-    would not produce the same bytes. The linker tier quotes the build tree it was
-    handed and does not know where the tree starts, so the quoting is unwound here.
-    """
-    prefix = scan_root.as_posix()
-    if not prefix or prefix == "/":
-        return
-    result.notes[:] = [
-        note.replace(f"{prefix}/", "").replace(prefix, ".") for note in result.notes
-    ]
 
 
 def _apply_ignores(result: Analysis, settings: _Settings) -> None:
@@ -649,12 +647,11 @@ def _suppress(result: Analysis, symbol: str) -> int:
 def _named(candidate: Candidate, symbol: str) -> bool:
     """Answer whether an ``[[ignore]]`` symbol addresses this candidate.
 
-    The match is exact. Matching the unqualified tail would let an entry written for
-    ``topi::shim`` quiet an unrelated ``other::shim``, and that over-suppression is
-    silent: the operator sees a candidate leave the report instead of an allowlist
-    entry that no longer applies. ``qualified_name`` is empty in today's analysis, so
-    a qualified spelling names nothing yet; ``--strict-ignores`` reports it as stale,
-    which is the alarm the loose match would have no equivalent of.
+    The match is exact against the name the report prints. That name is the
+    unqualified spelling today, because the analysis only learns a qualified name
+    from the linker tier; a qualified entry therefore names nothing on an ordinary
+    run, and ``--strict-ignores`` reports it as stale instead of letting a loose
+    match quietly suppress an unrelated function that shares the tail.
     """
     return symbol in (candidate.name, candidate.qualified_name)
 
@@ -762,13 +759,18 @@ def _cache_base() -> Path:
 
 def _doctor(args: argparse.Namespace) -> ExitCode:
     """Report what the environment offers, and exit 0 when it is usable."""
+    found = discover.candidates(args.libclang, os.environ)
     library = discover.load(args.libclang, required_major=args.require_libclang)
     if args.compile_commands is not None:
         database = Path(args.compile_commands)
         units = frontend.load_compile_commands(database)
         print(f"compilation database: {len(units)} translation unit(s)")
     sys.stdout.write(
-        doctor.report(library, cross_check_available=_linker_tools()),
+        doctor.report(
+            library,
+            cross_check_available=_linker_tools(),
+            candidates=found,
+        ),
     )
     return ExitCode.CLEAN
 

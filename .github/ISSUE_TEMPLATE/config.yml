@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/deadweight/deadweight/security/policy
+    about: Report privately, as SECURITY.md describes; never in a public issue.
