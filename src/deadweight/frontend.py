@@ -21,6 +21,7 @@ derived from the units' own directories would miss a header kept beside them.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import multiprocessing
 import os
@@ -65,9 +66,10 @@ def load_compile_commands(path: Path) -> list[TranslationUnit]:
     """Read a compilation database into the units a scan can parse.
 
     ``command`` is split as a shell would split it and ``arguments`` is used as given;
-    either way the compiler itself, the ``-o`` operand and the source file are
-    dropped, because the parser takes the file separately and an argument list that
-    names it again asks libclang for two inputs.
+    either way everything before the first flag (the compiler, and any launcher before
+    it), the ``-o`` operand and the source file are dropped, because the parser takes
+    the file separately and an argument list that names it again asks libclang for two
+    inputs.
     """
     try:
         entries = json.loads(path.read_text(encoding="utf-8"))
@@ -161,7 +163,10 @@ def scan(  # noqa: PLR0913
     for index, parsed, key in _parse_all(pending, jobs, library.path):
         results[index] = parsed
         if use_cache and cache_dir and parsed.status == STATUS_OK:
-            facts.write(cache_dir, key, parsed)
+            # The cache is an optimisation, so an unwritable directory costs the
+            # next run a parse; it must never fail this one.
+            with contextlib.suppress(OSError):
+                facts.write(cache_dir, key, parsed)
     return [results[index] for index in range(len(units))]
 
 
@@ -221,19 +226,25 @@ def _tokens(entry: dict[str, object]) -> list[str]:
     """The entry's argument vector, whichever form the database spelled it in."""
     arguments = entry.get("arguments")
     if isinstance(arguments, list):
-        return _without_compiler([_text(item) for item in arguments])
+        return _from_the_first_flag([_text(item) for item in arguments])
     command = entry.get("command")
     if isinstance(command, str):
-        return _without_compiler(shlex.split(command))
+        return _from_the_first_flag(shlex.split(command))
     message = "a compilation database entry has neither 'command' nor 'arguments'"
     raise CompileCommandsError(message)
 
 
-def _without_compiler(tokens: list[str]) -> list[str]:
-    """Drop argv[0] when it is the compiler's path rather than a flag."""
-    if tokens and not tokens[0].startswith("-"):
-        return tokens[1:]
-    return tokens
+def _from_the_first_flag(tokens: list[str]) -> list[str]:
+    """Drop everything before the first flag, launcher words included.
+
+    ``argv[0]`` is the compiler, but a database may also spell ``ccache c++ ...`` or
+    ``cd build && c++ ...``. libclang reads a leading non-flag token as an input
+    file, so every token before the first flag goes, not just the first one.
+    """
+    for index, token in enumerate(tokens):
+        if token.startswith("-"):
+            return tokens[index:]
+    return []
 
 
 def _arguments(tokens: list[str], source: Path) -> list[str]:

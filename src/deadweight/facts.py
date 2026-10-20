@@ -60,10 +60,13 @@ class _MalformedRecordError(ValueError):
 def source_tree_stamp(root: Path, roots: tuple[str, ...]) -> str:
     """Digest the first-party sources under ``roots``, headers included.
 
-    Paths are hashed relative to ``root``, so moving the tree does not invalidate the
-    cache, and only source files are read, so a README edit does not either. A root
-    that does not exist contributes nothing: a scan that missed a root would then keep
-    stale facts, which the caller's configuration is responsible for not causing.
+    Paths are hashed relative to ``root``, so the stamp itself is independent of where
+    the tree sits, and only source files are read, so a README edit does not disturb
+    it. A move still invalidates the cache, because :func:`cache_key` names the unit
+    by its absolute path and directory; the relative spelling here only keeps the
+    stamp stable. A root that does not exist contributes nothing: a scan that missed
+    a root would then keep stale facts, which the caller's configuration is
+    responsible for not causing.
     """
     digest = hashlib.sha256()
     for path in _sources(root, roots):

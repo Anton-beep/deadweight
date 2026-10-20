@@ -2,6 +2,14 @@
   {
     "directory": ".",
     "file": "src/rel.cpp",
-    "command": "c++ -std=c++17 -Iinclude -c src/rel.cpp -o rel.o"
+    "arguments": [
+      "c++",
+      "-std=c++17",
+      "-Iinclude",
+      "-c",
+      "src/rel.cpp",
+      "-o",
+      "rel.o"
+    ]
   }
 ]

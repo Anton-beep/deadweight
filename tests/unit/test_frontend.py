@@ -5,8 +5,9 @@ Two properties here are the reason the module exists rather than a loop over
 ``-I`` against the process's current directory, not against the compilation entry's,
 so a worker has to ``chdir`` into the entry's directory and put it back afterwards.
 The second is the cache: a unit whose facts are already on disk is never handed to a
-parser, and a unit that does not parse poisons the run as an ``error`` record rather
-than disappearing from it.
+parser, a unit that does not parse poisons the run as an ``error`` record rather than
+disappearing from it, and a cache that cannot be written is a lost optimisation
+rather than a failed run.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from deadweight import FACTS_VERSION, cindex, discover, facts, frontend
+from deadweight import FACTS_VERSION, cindex, facts, frontend
 from deadweight.frontend import TranslationUnit
 from deadweight.model import STATUS_ERROR, STATUS_OK, Decl, Facts, Loc, Span
 
@@ -23,25 +24,6 @@ FIXTURES = Path(__file__).parent.parent / "fixtures"
 RELINC = FIXTURES / "relinc"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 """The scan root the tests run from, which carries no ``include/`` directory."""
-
-
-def try_load() -> cindex.LibClang | None:
-    """The host's libclang, or ``None`` when there is none to test against."""
-    try:
-        return discover.load()
-    except (discover.LibClangError, OSError):
-        return None
-
-
-LIB = try_load()
-
-requires_libclang = pytest.mark.skipif(LIB is None, reason="no libclang found")
-
-
-def library() -> cindex.LibClang:
-    """The discovered libclang, for the tests that are skipped without one."""
-    assert LIB is not None
-    return LIB
 
 
 def relinc_units() -> list[TranslationUnit]:
@@ -78,9 +60,9 @@ def cached_facts(unit: TranslationUnit) -> Facts:
     )
 
 
-@requires_libclang
 def test_compile_commands_relative_include_resolves(
     monkeypatch: pytest.MonkeyPatch,
+    libclang: cindex.LibClang,
 ) -> None:
     """``-Iinclude`` is relative to the entry's directory, so the worker must chdir.
 
@@ -97,49 +79,55 @@ def test_compile_commands_relative_include_resolves(
     assert unit.arguments == ["-std=c++17", "-Iinclude", "-c"]
 
     monkeypatch.chdir(REPO_ROOT)
-    _, _, diagnostics, ok = library().parse(Path(unit.path), unit.arguments)
+    _, _, diagnostics, ok = libclang.parse(Path(unit.path), unit.arguments)
     assert not ok, "the include directory is only valid from the entry's directory"
     assert diagnostics
 
     monkeypatch.chdir(unit.directory)
-    decls, _, diagnostics, ok = library().parse(Path(unit.path), unit.arguments)
+    decls, _, diagnostics, ok = libclang.parse(Path(unit.path), unit.arguments)
     assert ok, diagnostics
     assert [decl.name for decl in decls if decl.kind == "function"] == ["rel"]
 
 
-@requires_libclang
-def test_worker_restores_its_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_worker_restores_its_cwd(
+    monkeypatch: pytest.MonkeyPatch,
+    libclang: cindex.LibClang,
+) -> None:
     """The worker parses from the entry's directory and leaves the caller's alone."""
     unit = relinc_units()[0]
     monkeypatch.chdir(REPO_ROOT)
     before = Path.cwd()
-    parsed = frontend.parse_unit(unit, library().path)
+    parsed = frontend.parse_unit(unit, libclang.path)
     assert Path.cwd() == before
     assert parsed.status == STATUS_OK, parsed.diags
     assert parsed.tu == unit.path
-    assert parsed.compiler["libclang"] == library().version
+    assert parsed.compiler["libclang"] == libclang.version
 
 
-@requires_libclang
-def test_worker_restores_its_cwd_when_the_parse_fails(tmp_path: Path) -> None:
+def test_worker_restores_its_cwd_when_the_parse_fails(
+    tmp_path: Path,
+    libclang: cindex.LibClang,
+) -> None:
     """A unit that does not parse still puts the working directory back."""
     unit = broken_unit(tmp_path)
     before = Path.cwd()
-    parsed = frontend.parse_unit(unit, library().path)
+    parsed = frontend.parse_unit(unit, libclang.path)
     assert Path.cwd() == before
     assert parsed.status == STATUS_ERROR
     assert parsed.diags
 
 
-@requires_libclang
-def test_parse_failure_marks_the_facts_and_propagates(tmp_path: Path) -> None:
+def test_parse_failure_marks_the_facts_and_propagates(
+    tmp_path: Path,
+    libclang: cindex.LibClang,
+) -> None:
     """An unparsable unit comes back as ``error`` facts, so the run can exit 2."""
     unit = broken_unit(tmp_path)
     results = frontend.scan(
         [unit],
         jobs=1,
         cache_dir=None,
-        libclang_path=library().path,
+        libclang_path=libclang.path,
         use_cache=False,
         tree_stamp="",
     )
@@ -149,15 +137,14 @@ def test_parse_failure_marks_the_facts_and_propagates(tmp_path: Path) -> None:
     assert results[0].diags
 
 
-@requires_libclang
-def test_scan_parses_a_unit_in_a_worker() -> None:
+def test_scan_parses_a_unit_in_a_worker(libclang: cindex.LibClang) -> None:
     """The pool is the path a real scan takes, relative include flag and all."""
     unit = relinc_units()[0]
     results = frontend.scan(
         [unit],
         jobs=1,
         cache_dir=None,
-        libclang_path=library().path,
+        libclang_path=libclang.path,
         use_cache=False,
         tree_stamp="",
     )
@@ -167,16 +154,75 @@ def test_scan_parses_a_unit_in_a_worker() -> None:
     assert results[0].tu == unit.path
 
 
-@requires_libclang
+def test_scan_writes_a_record_after_a_successful_parse(
+    tmp_path: Path,
+    libclang: cindex.LibClang,
+) -> None:
+    """A parsed unit is cached under the key the next scan will look up."""
+    unit = relinc_units()[0]
+    cache_dir = tmp_path / "cache"
+    results = frontend.scan(
+        [unit],
+        jobs=1,
+        cache_dir=cache_dir,
+        libclang_path=libclang.path,
+        use_cache=True,
+        tree_stamp="a stamp",
+    )
+    assert results[0].status == STATUS_OK, results[0].diags
+    key = facts.cache_key(unit, FACTS_VERSION, libclang.version, "a stamp")
+    assert facts.read(cache_dir, key) == results[0]
+
+
+def test_a_parse_failure_is_not_cached(
+    tmp_path: Path,
+    libclang: cindex.LibClang,
+) -> None:
+    """An error record is retried next run instead of pinning the failure."""
+    cache_dir = tmp_path / "cache"
+    unit = broken_unit(tmp_path)
+    results = frontend.scan(
+        [unit],
+        jobs=1,
+        cache_dir=cache_dir,
+        libclang_path=libclang.path,
+        use_cache=True,
+        tree_stamp="a stamp",
+    )
+    assert results[0].status == STATUS_ERROR
+    assert list(cache_dir.glob(f"*{facts.SUFFIX}")) == []
+
+
+def test_an_unusable_cache_does_not_fail_the_scan(
+    tmp_path: Path,
+    libclang: cindex.LibClang,
+) -> None:
+    """An unwritable cache costs a parse, not the run: the cache is an optimisation."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.write_text("not a directory\n")
+    unit = relinc_units()[0]
+    results = frontend.scan(
+        [unit],
+        jobs=1,
+        cache_dir=cache_dir,
+        libclang_path=libclang.path,
+        use_cache=True,
+        tree_stamp="a stamp",
+    )
+    assert results[0].status == STATUS_OK, results[0].diags
+    assert [decl.name for decl in results[0].decls] == ["rel"]
+
+
 def test_cache_hit_skips_the_parser(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    libclang: cindex.LibClang,
 ) -> None:
     """Facts already on disk are answered without a parse, and without a pool."""
     unit = relinc_units()[0]
     cache_dir = tmp_path / "cache"
     stamp = facts.source_tree_stamp(RELINC, ("src", "include"))
-    key = facts.cache_key(unit, FACTS_VERSION, library().version, stamp)
+    key = facts.cache_key(unit, FACTS_VERSION, libclang.version, stamp)
     facts.write(cache_dir, key, cached_facts(unit))
 
     def refuse(*_args: object, **_kwargs: object) -> Facts:
@@ -188,11 +234,24 @@ def test_cache_hit_skips_the_parser(
         [unit],
         jobs=1,
         cache_dir=cache_dir,
-        libclang_path=library().path,
+        libclang_path=libclang.path,
         use_cache=True,
         tree_stamp=stamp,
     )
     assert results == [cached_facts(unit)]
+
+
+def test_scan_refuses_a_job_count_below_one() -> None:
+    """No worker count means no pool; a scan asked for zero names the mistake."""
+    with pytest.raises(ValueError, match="jobs must be at least 1"):
+        frontend.scan(
+            [],
+            jobs=0,
+            cache_dir=None,
+            libclang_path=None,
+            use_cache=False,
+            tree_stamp="",
+        )
 
 
 def test_classify_splits_production_from_test_units() -> None:
@@ -213,6 +272,42 @@ def test_an_arguments_entry_keeps_its_flags_and_drops_the_rest(tmp_path: Path) -
         ' "../src/rel.cpp", "-o", "rel.o"]}]',
     )
     (tmp_path / "build").mkdir()
+    units = frontend.load_compile_commands(database)
+    assert units == [
+        TranslationUnit(
+            path=str(tmp_path / "src" / "rel.cpp"),
+            directory=str(tmp_path / "build"),
+            arguments=["-std=c++17", "-Iinclude", "-c"],
+        ),
+    ]
+
+
+def test_a_launcher_before_the_compiler_is_dropped(tmp_path: Path) -> None:
+    """``ccache c++ ...`` names a compiler wrapper; libclang must not see ``ccache``."""
+    database = tmp_path / "compile_commands.json"
+    database.write_text(
+        '[{"directory": ".", "file": "src/rel.cpp",'
+        ' "arguments": ["ccache", "c++", "-std=c++17", "-Iinclude", "-c",'
+        ' "src/rel.cpp"]}]',
+    )
+    units = frontend.load_compile_commands(database)
+    assert units == [
+        TranslationUnit(
+            path=str(tmp_path / "src" / "rel.cpp"),
+            directory=str(tmp_path),
+            arguments=["-std=c++17", "-Iinclude", "-c"],
+        ),
+    ]
+
+
+def test_a_command_entry_is_split_like_a_shell(tmp_path: Path) -> None:
+    """A ``cd build && c++ ...`` command leaves the flags, not the shell's words."""
+    database = tmp_path / "compile_commands.json"
+    database.write_text(
+        '[{"directory": "build", "file": "../src/rel.cpp",'
+        ' "command": "cd build && c++ -std=c++17 -Iinclude -c ../src/rel.cpp'
+        ' -o rel.o"}]',
+    )
     units = frontend.load_compile_commands(database)
     assert units == [
         TranslationUnit(
