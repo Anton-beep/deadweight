@@ -222,6 +222,27 @@ def test_an_ignore_suppresses_a_candidate(
     assert any("ignore" in note for note in payload["notes"])
 
 
+def test_a_namespaced_ignore_symbol_suppresses_the_candidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The allowlist may name a symbol the way the manual spells it, qualified."""
+    monkeypatch.chdir(tmp_path)
+    install(monkeypatch, tmp_path, parsed(tmp_path))
+    write_config(
+        tmp_path,
+        '[scan]\nprod_roots = ["src"]\ntest_roots = ["tests"]\nout = "reports"\n'
+        '[[ignore]]\nsymbol = "topi::only_in_tests"\n'
+        'reason = "kept for the termux build"\n',
+    )
+
+    code = cli.main(["scan", "--no-cache"])
+
+    assert code == cli.ExitCode.CLEAN
+    payload = json.loads((tmp_path / "reports" / "report.json").read_text("utf-8"))
+    assert payload["candidates"] == []
+
+
 def test_strict_ignores_flags_a_stale_entry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

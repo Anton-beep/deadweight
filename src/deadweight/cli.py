@@ -637,17 +637,25 @@ def _apply_ignores(result: Analysis, settings: _Settings) -> None:
 
 
 def _suppress(result: Analysis, symbol: str) -> int:
-    """Remove every candidate whose name or qualified name is ``symbol``."""
+    """Remove every candidate the ``[[ignore]]`` symbol names."""
     suppressed = 0
     for bucket in (result.candidates, result.dead_anywhere):
-        kept = [
-            candidate
-            for candidate in bucket
-            if symbol not in (candidate.name, candidate.qualified_name)
-        ]
+        kept = [candidate for candidate in bucket if not _named(candidate, symbol)]
         suppressed += len(bucket) - len(kept)
         bucket[:] = kept
     return suppressed
+
+
+def _named(candidate: Candidate, symbol: str) -> bool:
+    """Answer whether an ``[[ignore]]`` symbol addresses this candidate.
+
+    ``qualified_name`` is empty in today's analysis, so the symbol is also matched
+    against its unqualified tail: ``topi::LegacyShim`` and ``LegacyShim`` address the
+    same function, and the qualified spelling is the one the manual documents.
+    """
+    return symbol in (candidate.name, candidate.qualified_name) or symbol.endswith(
+        f"::{candidate.name}",
+    )
 
 
 def _exit_code(
