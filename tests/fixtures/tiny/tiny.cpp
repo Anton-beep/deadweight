@@ -21,3 +21,5 @@ void Widget::draw() const {}
 void Panel::update() const {}
 
 int caller() { return free_function(3); }
+
+int Reader::read() const { return 0; }

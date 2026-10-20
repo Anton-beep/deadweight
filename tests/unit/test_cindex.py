@@ -24,6 +24,9 @@ ARGS = ["-std=c++17", "-I", str(FIXTURES)]
 FREE_USR = "c:@F@free_function#I#"
 """A free function's USR, which is canonical across every translation unit."""
 
+READ_USR = "c:@S@Reader@F@read#1"
+"""A pure virtual's USR, shared by its declaration and its out-of-line body."""
+
 
 def parse(libclang: cindex.LibClang) -> tuple[list[Decl], list[Ref]]:
     """The fixture unit, asserting on the way that it parsed cleanly."""
@@ -54,11 +57,16 @@ def test_parses_a_free_function_with_its_usr(libclang: cindex.LibClang) -> None:
 def test_a_definition_outranks_the_declaration_that_precedes_it(
     libclang: cindex.LibClang,
 ) -> None:
-    """The header's declaration and the .cpp's definition are one record."""
+    """A pure declaration in the header and its out-of-line body are one record.
+
+    Only ``pure``, ``= default`` and ``= delete`` make a bodyless declaration
+    recordable, so a pure virtual defined outside its class is the pair that still
+    yields two records under one USR and leaves the quoted body to precedence.
+    """
     decls, _ = parse(libclang)
-    destructor = one(decls, "c:@S@Widget@F@~Widget#")
-    assert destructor.file.endswith("tiny.cpp")
-    assert "defaulted" in destructor.markers
+    method = one(decls, READ_USR)
+    assert method.kind == "method"
+    assert method.file.endswith("tiny.cpp")
 
 
 def test_virtual_method_is_marked_virtual(libclang: cindex.LibClang) -> None:

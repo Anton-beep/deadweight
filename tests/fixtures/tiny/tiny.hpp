@@ -23,3 +23,8 @@ class Panel : public Widget {
 int free_function(int value);
 
 int dead_helper(int value);
+
+class Reader {
+ public:
+  virtual int read() const = 0;
+};
