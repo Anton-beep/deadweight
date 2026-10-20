@@ -56,6 +56,12 @@ deadweight scan
 
 It reports functions and nothing else — no unused types, files, globals or targets. It does not run your tests and is not a coverage tool. It cannot see virtual dispatch or function-pointer identity, which is why those functions are keepers rather than candidates. Deleting code is always your call.
 
+## Documentation
+
+- [`docs/verdicts.md`](docs/verdicts.md) — the operator manual: every flag, the six buckets, the linker GC and object-symbol ladders, and the limits.
+- [`docs/compatibility.md`](docs/compatibility.md) — the libclang contract: the version 16 floor, the tested matrix, `deadweight doctor` and the nightly canary.
+- [`docs/design.md`](docs/design.md) — why the front end is libclang and not clangd, SCIP or libTooling, and the per-translation-unit facts seam.
+
 ## Licence
 
 Apache-2.0.
