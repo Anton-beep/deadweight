@@ -8,7 +8,8 @@ tolerance to widen. What each case pins:
 * ``header_inline_test_only`` — a body in a header reached only from a test is a
   candidate, and the unused function beside it is dead anywhere.
 * ``virtual_override_chain`` — an override reached only through an interface is a
-  keeper, and the private helper its body calls is not proposed.
+  keeper, the private helper its body calls is not proposed, and a defaulted member
+  called only from a dead body is a keeper rather than a candidate.
 * ``macro_twins`` — two functions expanded from one macro body share a definition
   anchor and are ``ambiguous``, never candidates.
 * ``template_body_call`` — a call made from a template body is invisible to the graph,

@@ -14,3 +14,11 @@ class Concrete : public Interface {
  private:
   int helper() const;
 };
+
+class Key {
+ public:
+  bool operator==(const Key &other) const = default;
+
+ private:
+  int id_ = 0;
+};

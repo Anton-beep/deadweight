@@ -2,11 +2,11 @@
   {
     "directory": ".",
     "file": "tree/src/chain.cpp",
-    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/src/chain.cpp"]
+    "arguments": ["c++", "-std=c++20", "-Itree/include", "tree/src/chain.cpp"]
   },
   {
     "directory": ".",
     "file": "tree/tests/chain_test.cpp",
-    "arguments": ["c++", "-std=c++17", "-Itree/include", "tree/tests/chain_test.cpp"]
+    "arguments": ["c++", "-std=c++20", "-Itree/include", "tree/tests/chain_test.cpp"]
   }
 ]

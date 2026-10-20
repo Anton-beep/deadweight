@@ -3,10 +3,13 @@
   "keepers": [
     "tree/include/chain.hpp:~Interface",
     "tree/include/chain.hpp:compute",
+    "tree/include/chain.hpp:operator==",
     "tree/src/chain.cpp:compute"
   ],
   "special_members": [],
-  "dead_anywhere": [],
+  "dead_anywhere": [
+    "tree/src/chain.cpp:compare_dead"
+  ],
   "entry_points": [],
   "ambiguous": [],
   "exit": 0

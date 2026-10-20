@@ -215,15 +215,20 @@ def _record_evidence(candidate: Candidate, usr: str, evidence: _Evidence) -> Non
 def _entry_point_or_keeper(
     component: Component,
     candidate: Candidate,
+    live: set[str],
 ) -> tuple[str, str] | None:
     """The buckets a function enters without being dead weight, with its reason.
 
-    A keeper is a virtual/override or a compiler-owned member that no production
-    reference touches: the only thing keeping it in the graph is the rule itself, and
-    the report owes the operator that explanation. Liveness cannot stand in for it,
+    A keeper is a virtual/override or a compiler-owned member that nothing keeps in
+    the graph but the rule itself, and the report owes the operator that explanation.
+    The two need different tests for that. Liveness cannot stand in for dispatch,
     because the fixpoint seeds every dispatch root as a root — asking whether a virtual
     is live answers yes because it is virtual, which would drop it from the report
-    rather than explain it. A virtual a production body does call needs no explanation,
+    rather than explain it, so a virtual is a keeper when no production reference
+    touches it. For a compiler-owned member the reference gate would be wrong: a
+    ``= default`` that only a dead production body calls has a production reference
+    yet is no more reached than that dead body, so the liveness test is what keeps it
+    out of the candidates. A virtual a production body does call needs no explanation,
     and is reached like any other callee.
     """
     if "main" in component.names:
@@ -231,20 +236,18 @@ def _entry_point_or_keeper(
             "entry_points",
             "entry point: reached by the C runtime, not by a call site",
         )
-    dispatch = is_dispatch_root(component)
-    compiler_owned = bool(component.markers & COMPILER_OWNED)
-    if not (dispatch or compiler_owned):
-        return None
-    if candidate.direct_prod_refs or candidate.reached_via:
-        return None
-    if dispatch:
+    if is_dispatch_root(component):
+        if candidate.direct_prod_refs or candidate.reached_via:
+            return None
         return "keepers", (
             "virtual/override with no production call site: dispatch or a mock may "
             "call it, so it is never proposed"
         )
-    return "keepers", (
-        "compiler-owned (= default / = delete): removing it changes class semantics"
-    )
+    if component.markers & COMPILER_OWNED and component.usr not in live:
+        return "keepers", (
+            "compiler-owned (= default / = delete): removing it changes class semantics"
+        )
+    return None
 
 
 def _bucket(
@@ -254,7 +257,7 @@ def _bucket(
     shared: set[str],
 ) -> tuple[str, str] | None:
     """Which bucket a function belongs in, and the sentence that explains it."""
-    rooted = _entry_point_or_keeper(component, candidate)
+    rooted = _entry_point_or_keeper(component, candidate, live)
     if rooted is not None:
         return rooted
     if component.usr in live:

@@ -32,6 +32,7 @@ USR_CTOR = "c:@N@topi@S@Config@F@Config#"
 USR_DTOR = "c:@N@topi@S@Config@F@~Config#"
 USR_CONV = "c:@N@topi@S@Config@F@operator bool#1"
 USR_ASSIGN = "c:@N@topi@S@Config@F@operator=#&1$@N@topi@S@Config#"
+USR_EQUALS = "c:@N@topi@S@Config@F@operator==#&1$@N@topi@S@Config#"
 USR_MAIN = "c:@F@main#"
 USR_SUBSCRIBE = "c:@N@topi@F@Subscribe#I#"
 USR_OUTER = "c:@N@topi@F@Outer#"
@@ -170,6 +171,43 @@ def test_a_virtual_a_production_body_calls_is_not_a_keeper() -> None:
     analysis = analyze([facts], PROD_ROOTS, TEST_ROOTS)
     assert analysis.keepers == []
     assert analysis.candidates == []
+
+
+def test_a_defaulted_member_a_dead_body_calls_is_still_a_keeper() -> None:
+    """A compiler-owned member is kept by liveness, not by its production references.
+
+    A ``= default`` equality operator is not a special kind, so a production reference
+    is no evidence it can be removed: the body the reference sits in is itself dead, and
+    only liveness says whether the operator is reached from a root.
+    """
+    equality = make_decl(
+        USR_EQUALS, "operator==", line=20, kind="method", markers=("defaulted",),
+    )
+    dead = make_decl(USR_DEAD, "Dead", line=40)
+    facts = make_facts(
+        decls=[equality, dead],
+        refs=[make_ref(USR_EQUALS, tu="client/a.cpp", line=41)],
+    )
+    analysis = analyze([facts], PROD_ROOTS, TEST_ROOTS)
+    assert [keeper.name for keeper in analysis.keepers] == ["operator=="]
+    assert [candidate.name for candidate in analysis.dead_anywhere] == ["Dead"]
+    assert analysis.candidates == []
+
+
+def test_a_defaulted_member_a_live_body_calls_is_not_a_keeper() -> None:
+    """A compiler-owned member a live body reaches needs no explanation."""
+    equality = make_decl(
+        USR_EQUALS, "operator==", line=20, kind="method", markers=("defaulted",),
+    )
+    main = make_decl(USR_MAIN, "main", file="client/main.cpp", line=40)
+    facts = make_facts(
+        decls=[equality, main],
+        refs=[make_ref(USR_EQUALS, tu="client/main.cpp", line=41)],
+    )
+    analysis = analyze([facts], PROD_ROOTS, TEST_ROOTS)
+    assert analysis.keepers == []
+    assert analysis.candidates == []
+    assert [entry.name for entry in analysis.entry_points] == ["main"]
 
 
 def test_cascade_names_the_prod_caller() -> None:
