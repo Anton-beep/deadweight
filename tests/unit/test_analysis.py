@@ -146,6 +146,32 @@ def test_virtual_is_dispatch_root_and_keeper() -> None:
     assert analysis.dead_anywhere == []
 
 
+def test_an_unreferenced_virtual_is_still_a_keeper() -> None:
+    """Dispatch alone keeps an override, so a keeper is listed without a call site.
+
+    The fixpoint seeds every dispatch root as a root, so a keeper cannot be recognised
+    by asking whether the function is live: the answer is yes because it is virtual, and
+    the report would drop the function rather than say why it is never proposed.
+    """
+    run = make_decl(USR_RUN, "Run", line=20, kind="method", markers=("virtual",))
+    analysis = analyze([make_facts(decls=[run])], PROD_ROOTS, TEST_ROOTS)
+    assert [keeper.name for keeper in analysis.keepers] == ["Run"]
+    assert analysis.candidates == []
+
+
+def test_a_virtual_a_production_body_calls_is_not_a_keeper() -> None:
+    """A virtual with a production call site is reached like any other callee."""
+    run = make_decl(USR_RUN, "Run", line=20, kind="method", markers=("virtual",))
+    caller = make_decl(USR_HELPER, "Caller", line=40)
+    facts = make_facts(
+        decls=[run, caller],
+        refs=[make_ref(USR_RUN, tu="client/impl.cpp", line=41)],
+    )
+    analysis = analyze([facts], PROD_ROOTS, TEST_ROOTS)
+    assert analysis.keepers == []
+    assert analysis.candidates == []
+
+
 def test_cascade_names_the_prod_caller() -> None:
     """A helper reached only through a test-only function is test-only too."""
     facts = make_facts(

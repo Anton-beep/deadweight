@@ -6,9 +6,10 @@ reports, so an upgrade that keeps the ABI keeps the tool. Two recording rules ca
 analysis:
 
 * A declaration is recorded when clang calls it a definition, and also when it carries
-  a ``= default`` or ``= delete`` marker that clang reports as a declaration but the
-  keeper ladder has to see. A declaration that is neither is the header's echo of a
-  body defined elsewhere, and the USR merge would only duplicate it.
+  a ``pure``, ``= default`` or ``= delete`` marker: those members have no body to
+  record, and the keeper ladder still has to see them. A ``virtual`` declaration on its
+  own is not recorded, because every override in a class body carries that marker and
+  recording it would quote a declaration where the report promises the body.
 * A reference is recorded wherever a cursor resolves to a function, which covers
   calls, constructor calls and address-taken functions, and excludes the type and
   variable references the analysis has no use for. The same site reached through
@@ -114,6 +115,15 @@ _MARKERS = (
     ("deleted", "clang_CXXMethod_isDeleted"),
 )
 """Every marker the keeper ladder reads, with the entry point that reports it."""
+
+_BODYLESS_MARKERS = frozenset({"pure", "defaulted", "deleted"})
+"""The markers that make a bodyless declaration recordable.
+
+``virtual`` is deliberately absent: an override declaration in a class body carries it
+as well as the body defined in another translation unit does, so recording it would put
+a declaration where the report promises a body. A virtual without a body is either pure
+or defined elsewhere, and both of those are recorded on their own terms.
+"""
 
 _DELETE_MARKERS = ("= delete", "=delete")
 
@@ -501,7 +511,7 @@ class _Walker:
         location = self._api.location(self._api.lib.clang_getCursorLocation(cursor))
         markers = self._markers(cursor, location)
         definition = self._api.is_definition(cursor)
-        if not definition and not markers:
+        if not definition and not markers & _BODYLESS_MARKERS:
             return
         usr = self._api.cursor_usr(cursor)
         if not usr or not location.file:

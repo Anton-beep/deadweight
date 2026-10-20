@@ -215,9 +215,17 @@ def _record_evidence(candidate: Candidate, usr: str, evidence: _Evidence) -> Non
 def _entry_point_or_keeper(
     component: Component,
     candidate: Candidate,
-    live: set[str],
 ) -> tuple[str, str] | None:
-    """The buckets a function enters without being dead weight, with its reason."""
+    """The buckets a function enters without being dead weight, with its reason.
+
+    A keeper is a virtual/override or a compiler-owned member that no production
+    reference touches: the only thing keeping it in the graph is the rule itself, and
+    the report owes the operator that explanation. Liveness cannot stand in for it,
+    because the fixpoint seeds every dispatch root as a root — asking whether a virtual
+    is live answers yes because it is virtual, which would drop it from the report
+    rather than explain it. A virtual a production body does call needs no explanation,
+    and is reached like any other callee.
+    """
     if "main" in component.names:
         return (
             "entry_points",
@@ -225,19 +233,18 @@ def _entry_point_or_keeper(
         )
     dispatch = is_dispatch_root(component)
     compiler_owned = bool(component.markers & COMPILER_OWNED)
-    if dispatch and candidate.test_refs and not candidate.reached_via:
+    if not (dispatch or compiler_owned):
+        return None
+    if candidate.direct_prod_refs or candidate.reached_via:
+        return None
+    if dispatch:
         return "keepers", (
             "virtual/override with no production call site: dispatch or a mock may "
-            "call it, so it is reachable even though only tests reference it directly"
+            "call it, so it is never proposed"
         )
-    if (dispatch or compiler_owned) and component.usr not in live:
-        if compiler_owned:
-            return "keepers", (
-                "compiler-owned (= default / = delete): removing it changes "
-                "class semantics"
-            )
-        return "keepers", "virtual/override: dispatch is invisible to the static graph"
-    return None
+    return "keepers", (
+        "compiler-owned (= default / = delete): removing it changes class semantics"
+    )
 
 
 def _bucket(
@@ -247,7 +254,7 @@ def _bucket(
     shared: set[str],
 ) -> tuple[str, str] | None:
     """Which bucket a function belongs in, and the sentence that explains it."""
-    rooted = _entry_point_or_keeper(component, candidate, live)
+    rooted = _entry_point_or_keeper(component, candidate)
     if rooted is not None:
         return rooted
     if component.usr in live:
