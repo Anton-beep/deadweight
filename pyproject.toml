@@ -51,8 +51,13 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Test modules are not a package (no `__init__.py`), and `assert` is the
-# assertion mechanism pytest rewrites.
-"tests/**" = ["INP001", "S101"]
+# assertion mechanism pytest rewrites. A test double has to accept the
+# arguments of the seam it replaces without using them, which is what
+# ARG005 flags in the `monkeypatch.setattr` lambdas.
+"tests/**" = ["ARG005", "INP001", "S101"]
+# The command line is the one module whose job is to write the report to
+# stdout and the refusals to stderr.
+"src/deadweight/cli.py" = ["T201"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -1,0 +1,28 @@
+[
+  {
+    "directory": ".",
+    "file": "src/core.cpp",
+    "arguments": [
+      "c++",
+      "-std=c++17",
+      "-Isrc",
+      "-c",
+      "src/core.cpp",
+      "-o",
+      "core.o"
+    ]
+  },
+  {
+    "directory": ".",
+    "file": "tests/core_test.cpp",
+    "arguments": [
+      "c++",
+      "-std=c++17",
+      "-Isrc",
+      "-c",
+      "tests/core_test.cpp",
+      "-o",
+      "core_test.o"
+    ]
+  }
+]
