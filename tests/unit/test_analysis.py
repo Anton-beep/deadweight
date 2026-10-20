@@ -241,14 +241,25 @@ def test_prod_mentions_catches_template_bodies(tmp_path: Path) -> None:
     )
     analysis = analyze([facts], PROD_ROOTS, TEST_ROOTS)
     annotate_prod_mentions(analysis, tmp_path, PROD_ROOTS)
-    assert analysis.candidates[0].prod_mentions == [str(registry)]
+    # Relative to the scan root, like every other path in the report.
+    assert analysis.candidates[0].prod_mentions == ["client/registry.hpp"]
+
+
+def test_header_defined_flag_covers_c_headers() -> None:
+    """A body that lives in a plain ``.h`` is still a header body."""
+    facts = make_facts(
+        decls=[make_decl(USR_HELPER, "Helper", file="client/widget.h", line=7)],
+        refs=[make_ref(USR_HELPER)],
+    )
+    analysis = analyze([facts], PROD_ROOTS, TEST_ROOTS)
+    assert analysis.candidates[0].flags == ["header-defined"]
 
 
 def test_enclosing_function_picks_the_innermost_definition() -> None:
     """A reference inside a nested body belongs to the innermost function."""
     outer = make_decl(USR_OUTER, "Outer", line=10, end_line=30)
     inner = make_decl(USR_INNER, "Inner", line=20, end_line=25)
-    spans = definition_spans([outer, inner], PROD_ROOTS)
+    spans = definition_spans(build_components([outer, inner], PROD_ROOTS), PROD_ROOTS)
     assert enclosing_function(spans, Loc(file="client/a.cpp", line=5, col=1)) is None
     innermost = enclosing_function(spans, Loc(file="client/a.cpp", line=22, col=1))
     assert innermost is not None

@@ -29,7 +29,7 @@ SPECIAL_KINDS = frozenset({"constructor", "destructor", "conversion", "assignmen
 COMPILER_OWNED = frozenset({"defaulted", "deleted"})
 """Markers of members the compiler generates: removing them changes class semantics."""
 
-HEADER_SUFFIXES = (".hpp", ".hh", ".hxx")
+HEADER_SUFFIXES = (".hpp", ".hh", ".hxx", ".h", ".inc", ".inl")
 """Suffixes of a body that only exists in a header, which a removal has to respect."""
 
 MENTION_SUFFIXES = frozenset({".cpp", ".hpp", ".cc", ".hh", ".cxx", ".hxx", ".h"})
@@ -89,13 +89,17 @@ def build_components(
 
 
 def definition_spans(
-    decls: list[Decl],
+    components: dict[str, Component],
     prod_roots: tuple[str, ...],
 ) -> list[DefinitionSpan]:
-    """The production bodies, for attributing a reference site to its caller."""
+    """The production bodies, for attributing a reference site to its caller.
+
+    It takes the components :func:`analyze` already grouped rather than the raw
+    declarations, so the grouping and its ordering happen once per run.
+    """
     spans: list[DefinitionSpan] = []
     seen: set[tuple[str, int, int, int, int]] = set()
-    for component in build_components(decls, prod_roots).values():
+    for component in components.values():
         for decl in component.decls:
             if not under_any(decl.file, prod_roots):
                 continue
@@ -338,7 +342,7 @@ def analyze(
     klass, tu_counts = _classify_tus(facts, prod_roots, test_roots)
     decls = [decl for fact in facts if fact.status == STATUS_OK for decl in fact.decls]
     components = build_components(decls, prod_roots)
-    spans = definition_spans(decls, prod_roots)
+    spans = definition_spans(components, prod_roots)
     evidence = _walk(facts, components, spans, klass, cascade=cascade)
     live = _fixpoint(components, evidence)
     shared = _shared_anchors(components)
@@ -385,7 +389,8 @@ def annotate_prod_mentions(
 
     The graph cannot see a name used inside a template body that is only instantiated
     from production code, so the report says where the name still appears and leaves
-    the judgement to a human.
+    the judgement to a human. The recorded paths are relative to ``repo_root``, the
+    same form as every other path in the report.
     """
     index: dict[str, set[str]] = {}
     for root in prod_roots:
@@ -399,11 +404,12 @@ def annotate_prod_mentions(
                 text = path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            index[str(path)] = set(MENTION_PATTERN.findall(text))
+            index[path.relative_to(repo_root).as_posix()] = set(
+                MENTION_PATTERN.findall(text),
+            )
     for candidate in analysis.all_candidates:
-        own = str(repo_root / candidate.file)
         candidate.prod_mentions = sorted(
             path
             for path, identifiers in index.items()
-            if candidate.name in identifiers and path != own
+            if candidate.name in identifiers and path != candidate.file
         )

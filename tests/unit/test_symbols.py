@@ -26,13 +26,14 @@ UNUSED = "_ZN4demo12UnusedByProdEi"
 USED = "_ZN4demo11UsedByProdEi"
 
 
-def gc_facts(
+def gc_facts(  # noqa: PLR0913 -- one argument per GcFacts field a test sets
     prod: Sequence[str] = (),
     tests: Sequence[str] = (),
     kept: Sequence[str] = (),
     tests_kept: Sequence[str] = (),
     *,
     tests_checked: bool = False,
+    binary_checked: bool = True,
 ) -> GcFacts:
     """What one production link discarded, as the gc report and binaries told it."""
     return GcFacts(
@@ -40,7 +41,7 @@ def gc_facts(
         tests={symbol: f".text.{symbol}" for symbol in tests},
         kept=set(kept),
         tests_kept=set(tests_kept),
-        binary_checked=True,
+        binary_checked=binary_checked,
         tests_checked=tests_checked or bool(tests_kept),
     )
 
@@ -201,6 +202,47 @@ def test_gc_verdict_confirms_and_distinguishes_the_test_side() -> None:
         demangled,
     )
     assert discarded_by_tests[0] == "gc-dead"
+
+
+def test_gc_verdict_reports_a_symbol_only_the_test_links_discarded() -> None:
+    """A symbol the production link never held but the test links dropped is dead."""
+    demangled = {UNUSED: "demo::UnusedByProd(int)"}
+    verdict, detail, qualified = gc_verdict(
+        "UnusedByProd", "function", 1, None, gc_facts(tests=[UNUSED]), {}, demangled,
+    )
+    assert verdict == "gc-dead"
+    assert "supplied test links only" in detail
+    assert qualified == "demo::UnusedByProd(int)"
+
+
+def test_gc_verdict_says_test_only_when_the_test_binaries_were_not_swept() -> None:
+    """Without a test binary sweep, discarded test links are all the link can say."""
+    verdict, detail, _ = gc_verdict(
+        "UnusedByProd",
+        "function",
+        1,
+        None,
+        gc_facts(prod=[UNUSED], tests=[USED]),
+        {},
+        {UNUSED: "demo::UnusedByProd(int)"},
+    )
+    assert verdict == "gc-test-only"
+    assert "kept by the supplied test links" in detail
+
+
+def test_gc_absent_without_a_production_binary_names_the_flag() -> None:
+    """A missing binary leaves the link unable to confirm the symbol survived."""
+    verdict, detail, _ = gc_verdict(
+        "UnusedByProd",
+        "function",
+        1,
+        None,
+        gc_facts(binary_checked=False),
+        {UNUSED: {"/b/x.o"}},
+        {UNUSED: "demo::UnusedByProd(int)"},
+    )
+    assert verdict == "gc-absent"
+    assert "--prod-binary" in detail
 
 
 def test_gc_verdict_ignores_a_third_party_namesake_that_survived() -> None:
