@@ -14,6 +14,9 @@ import sys
 
 before = set(sys.modules)
 import deadweight
+import deadweight.analysis
+import deadweight.model
+import deadweight.symbols
 
 roots = {name.partition(".")[0] for name in set(sys.modules) - before}
 print(json.dumps(sorted(roots)))
