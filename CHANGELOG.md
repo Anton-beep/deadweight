@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-21
+
+### Fixed
+
+- Macro-generated declarations carry an anchor taken from the macro's invocation site, and the `ambiguous` bucket groups on it. Grouping on the definition span split the twins on LLVM 16 and 18 and proposed them for deletion, while LLVM 20 and 22 called the same pair ambiguous. The facts record version moves to 2.
+- A resource directory from another LLVM major is no longer handed to libclang; its builtin headers made every unit fail with `ASTReadError`.
+- The CI's libclang pin no longer leaks into the discovery tests, and the jammy leg installs `libclang-common-N-dev` so the builtin headers exist at all.
+
 ## [0.1.0] - 2026-10-20
 
 ### Added
