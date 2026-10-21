@@ -183,6 +183,7 @@ def _decl_payload(decl: Decl) -> dict[str, object]:
         "name": decl.name,
         "file": decl.file,
         "loc": _loc_payload(decl.loc),
+        "anchor": _loc_payload(decl.anchor),
         "span": {
             "start": _loc_payload(decl.span.start),
             "end": _loc_payload(decl.span.end),
@@ -211,6 +212,9 @@ def _decl(value: object) -> Decl:
         name=_text(payload.get("name")),
         file=_text(payload.get("file")),
         loc=_loc(payload.get("loc")),
+        # A record written before anchors existed keys collisions the old way; the
+        # facts version in the cache key makes that a cold start, not a misread.
+        anchor=_loc(payload.get("anchor") or payload.get("loc")),
         span=_span(payload.get("span")),
         markers=frozenset(
             _text(marker) for marker in _sequence(payload.get("markers"))

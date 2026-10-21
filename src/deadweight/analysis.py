@@ -218,10 +218,17 @@ def _fixpoint(components: dict[str, Component], evidence: _Evidence) -> set[str]
 
 
 def _shared_anchors(components: dict[str, Component]) -> set[str]:
-    """The USRs whose anchors collide: what macro-generated twins look like."""
+    """The USRs whose anchors collide: what macro-generated twins look like.
+
+    The anchor, not the definition span, decides this. A macro that declares several
+    functions writes them at one place, and the step that produced the declaration
+    points inside the macro body — a location LLVM 16 and 18 report differently from 20
+    and 22. Grouping on the span therefore split the twins on the older libraries and
+    proposed them for deletion; the anchor is the invocation site on every version.
+    """
     anchored: dict[Loc, list[str]] = {}
     for usr, component in components.items():
-        anchored.setdefault(component.decls[0].span.start, []).append(usr)
+        anchored.setdefault(component.decls[0].anchor, []).append(usr)
     return {usr for usrs in anchored.values() if len(usrs) > 1 for usr in usrs}
 
 

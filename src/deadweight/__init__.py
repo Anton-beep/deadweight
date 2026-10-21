@@ -13,4 +13,4 @@ __version__ = "0.1.0"
 
 REPORT_SCHEMA = "deadweight.report/1"
 
-FACTS_VERSION = 1
+FACTS_VERSION = 2

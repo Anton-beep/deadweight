@@ -52,6 +52,7 @@ def cached_facts(unit: TranslationUnit) -> Facts:
                 name="from_the_cache",
                 file="src/rel.cpp",
                 loc=start,
+                anchor=start,
                 span=Span(start=start, end=Loc("src/rel.cpp", 3, 31)),
                 markers=frozenset(),
                 type_text="int (int)",

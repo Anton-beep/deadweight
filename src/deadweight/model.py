@@ -56,6 +56,11 @@ class Decl:
     ``assignment``; ``markers`` carries ``virtual``, ``pure``, ``defaulted`` and
     ``deleted`` as clang reports them. The front end records only definitions, so a
     component's declarations are the function's body wherever it was seen.
+
+    ``anchor`` is where the declaration was *written*: the macro's invocation site when
+    a macro produced it, and the declaration itself otherwise. ``loc`` is the spelling
+    location, which for a macro-expanded declaration points inside the macro body and
+    moves between LLVM releases, so identity collisions are keyed on the anchor.
     """
 
     usr: str
@@ -63,6 +68,7 @@ class Decl:
     name: str
     file: str
     loc: Loc
+    anchor: Loc
     span: Span
     markers: frozenset[str]
     type_text: str

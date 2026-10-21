@@ -69,6 +69,7 @@ def declaration(usr: str, name: str, line: int) -> Decl:
         name=name,
         file=PROD,
         loc=start,
+        anchor=start,
         span=Span(start=start, end=Loc(file=PROD, line=line, col=20)),
         markers=frozenset(),
         type_text="int (int)",

@@ -1,6 +1,9 @@
-// Both twins expand from one macro body, so they share a definition anchor and no
-// name-based matching can tell them apart.
-#define DEFINE_TWIN(name) int name(int value) { return value + 1; }
+// One invocation defines both twins, so a report can only point at the same site and
+// no name-based matching can tell the two definitions apart. Two *separate*
+// invocations of the same macro are a different shape: each has its own site, and the
+// scan reports them as ordinary functions rather than as an ambiguity.
+#define DEFINE_TWINS(first, second)          \
+  int first(int value) { return value + 1; } \
+  int second(int value) { return value + 1; }
 
-DEFINE_TWIN(twin_alpha)
-DEFINE_TWIN(twin_beta)
+DEFINE_TWINS(twin_alpha, twin_beta)

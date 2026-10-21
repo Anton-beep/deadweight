@@ -81,3 +81,20 @@ The AST verdict is portable; the linker tier is not. GC-report parsing and the o
 The package version, the report schema identifier and the facts record version move independently: the version follows semantic versioning, `deadweight.report/1` names the JSON layout, and `facts_version = 1` names the cached per-translation-unit record. A breaking change to either layout is a major bump of that identifier, not of the package alone, because a report consumer and a stale cache each need to detect it on their own.
 
 The libclang contract versions differently again: it is a floor plus a tested matrix, not a range of releases. Raising the floor is a decision recorded in `CHANGELOG.md`, and the machinery that makes it visible — `doctor`'s symbol list, `--require-libclang`, the corpus, the canary — exists so raising it is a deliberate act rather than an accident of a user's distribution.
+
+
+## Debian and Ubuntu: install the common package too
+
+`libclang-N-dev` and `libclang1-N` are not enough on a Debian derivative. The builtin headers — `<prefix>/lib/clang/N/include/stddef.h` and its neighbours — ship in `libclang-common-N-dev`, and without them libclang refuses every translation unit that includes a standard header:
+
+```
+fatal error: 'stddef.h' file not found
+```
+
+The tool turns that into a refused run rather than a silent one, and it will not borrow another major version's directory to paper over it: a 19-era resource directory handed to libclang 16 produces `ASTReadError` on every unit, which is worse than a clear failure. Install the package that matches the library:
+
+```bash
+sudo apt-get install -y libclang1-18 libclang-18-dev libclang-common-18-dev
+```
+
+`deadweight doctor` prints the library it chose and the version it reports, which is usually enough to see that the wrong package set is installed.

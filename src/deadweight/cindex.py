@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING
 from .model import Decl, Loc, Ref, Span
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 
 class _CXString(ctypes.Structure):
@@ -174,6 +174,16 @@ _SIGNATURES: dict[str, tuple[tuple[object, ...], type[object] | None]] = {
     "clang_getRangeStart": ((_CXSourceRange,), _CXSourceLocation),
     "clang_getRangeEnd": ((_CXSourceRange,), _CXSourceLocation),
     "clang_getSpellingLocation": (
+        (
+            _CXSourceLocation,
+            ctypes.POINTER(ctypes.c_void_p),
+            ctypes.POINTER(ctypes.c_uint),
+            ctypes.POINTER(ctypes.c_uint),
+            ctypes.POINTER(ctypes.c_uint),
+        ),
+        None,
+    ),
+    "clang_getExpansionLocation": (
         (
             _CXSourceLocation,
             ctypes.POINTER(ctypes.c_void_p),
@@ -359,11 +369,28 @@ class _Api:
 
     def location(self, location: _CXSourceLocation) -> Loc:
         """Resolve a source location to its file, line and column."""
+        return self._resolve(location, self.lib.clang_getSpellingLocation)
+
+    def expansion(self, location: _CXSourceLocation) -> Loc:
+        """Resolve where the code that produced this location was written.
+
+        For a declaration a macro expanded, the spelling location points inside the
+        macro body and the expansion location points at the invocation; only the second
+        is stable across LLVM releases, and only the second is a place a human edits.
+        """
+        return self._resolve(location, self.lib.clang_getExpansionLocation)
+
+    def _resolve(
+        self,
+        location: _CXSourceLocation,
+        resolver: Callable[..., None],
+    ) -> Loc:
+        """Run one of libclang's source-location resolvers and read the result."""
         handle = ctypes.c_void_p()
         line = ctypes.c_uint()
         column = ctypes.c_uint()
         offset = ctypes.c_uint()
-        self.lib.clang_getSpellingLocation(
+        resolver(
             location,
             ctypes.byref(handle),
             ctypes.byref(line),
@@ -508,7 +535,9 @@ class _Walker:
         kind = _decl_kind(self._api.lib.clang_getCursorKind(cursor), spelling)
         if kind is None:
             return
-        location = self._api.location(self._api.lib.clang_getCursorLocation(cursor))
+        cursor_location = self._api.lib.clang_getCursorLocation(cursor)
+        location = self._api.location(cursor_location)
+        anchor = self._api.expansion(cursor_location)
         markers = self._markers(cursor, location)
         definition = self._api.is_definition(cursor)
         if not definition and not markers & _BODYLESS_MARKERS:
@@ -522,6 +551,7 @@ class _Walker:
             name=spelling,
             file=location.file,
             loc=location,
+            anchor=anchor if anchor.file else location,
             span=self._api.extent(cursor),
             markers=markers,
             type_text=self._api.cursor_type_text(cursor),

@@ -35,7 +35,8 @@ def test_report_schema_versions_independently_of_the_package() -> None:
 
 def test_facts_version_versions_independently_of_the_package() -> None:
     """The facts record version is pinned and moves on its own schedule."""
-    assert deadweight.FACTS_VERSION == 1
+    facts_record_version = 2
+    assert facts_record_version == deadweight.FACTS_VERSION
 
 
 def test_importing_the_package_pulls_in_no_third_party_distribution() -> None:

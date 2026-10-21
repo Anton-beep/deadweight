@@ -36,7 +36,14 @@ jobs:
           # packages are asked for by name, then the soname is discovered rather than
           # guessed: it is libclang.so / libclang.so.1 / libclang-N.so.1 depending on
           # the release and the packager.
-          sudo apt-get install -y "libclang1-${{ matrix.libclang }}" "libclang-${{ matrix.libclang }}-dev"
+          # libclang-common carries the builtin headers (<prefix>/lib/clang/N/include);
+          # without it every unit fails with "stddef.h file not found" and the reason
+          # looks like a tool bug rather than a missing package.
+          sudo apt-get install -y \
+            "libclang1-${{ matrix.libclang }}" \
+            "libclang-${{ matrix.libclang }}-dev" \
+            "libclang-common-${{ matrix.libclang }}-dev"
+          test -f "/usr/lib/llvm-${{ matrix.libclang }}/lib/clang/${{ matrix.libclang }}/include/stddef.h"
           lib=$(ls /usr/lib/llvm-${{ matrix.libclang }}/lib/libclang.so* \
                    /usr/lib/*/libclang*${{ matrix.libclang }}.so* 2>/dev/null | head -n 1)
           test -n "$lib"

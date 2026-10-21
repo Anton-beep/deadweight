@@ -32,6 +32,7 @@ def make_decl(usr: str = "c:@F@rel#I#", name: str = "rel") -> Decl:
         name=name,
         file="src/rel.cpp",
         loc=start,
+        anchor=start,
         span=Span(start=start, end=end),
         markers=frozenset({"virtual"}),
         type_text="int (int)",
