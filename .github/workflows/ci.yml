@@ -63,6 +63,13 @@ jobs:
         # it once per libclang.
         run: uv run --no-sync pytest -q -m 'not slow'
 
+      - name: Diagnose the library when the suite fails
+        if: failure()
+        run: |
+          ls -l "$DEADWEIGHT_LIBCLANG" || true
+          python3 -c "import ctypes,sys; ctypes.CDLL(sys.argv[1]); print('dlopen: ok')" "$DEADWEIGHT_LIBCLANG" || true
+          uv run --no-sync deadweight doctor || true
+
   packaging:
     name: packaging
     runs-on: ubuntu-24.04
