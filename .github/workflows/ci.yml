@@ -63,6 +63,11 @@ jobs:
         # it once per libclang.
         run: uv run --no-sync pytest -q -m 'not slow'
 
+      - name: The pinned library is the one the tool uses
+        # The suite is unpinned on purpose; this is where the matrix proves that the
+        # library it installed is the one a scan would load.
+        run: uv run --no-sync deadweight doctor | grep -F "$DEADWEIGHT_LIBCLANG"
+
       - name: Diagnose the library when the suite fails
         if: failure()
         run: |
