@@ -67,6 +67,29 @@ jobs:
       - name: Install the project
         run: uv sync --locked
 
+      - name: Explain the builtin-header parse
+        # Cheap insurance: when a library refuses a one-line unit that includes
+        # <stddef.h>, this says which flag it choked on instead of costing a session.
+        run: |
+          uv run --no-sync python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from deadweight import discover
+          library = discover.load()
+          source = Path(tempfile.mkdtemp()) / "builtin.cpp"
+          source.write_text("#include <stddef.h>\nint f(size_t);\n", encoding="utf-8")
+          resource = discover.resource_dir(library)
+          print("library:", library.path, library.version)
+          print("resource:", resource)
+          combinations = []
+          if resource:
+              combinations.append([f"-resource-dir={resource}", "-std=c++23"])
+          combinations += [["-std=c++23"], ["-std=c++17"], []]
+          for arguments in combinations:
+              decls, refs, diagnostics, ok = library.parse(source, arguments)
+              print(arguments, "ok=", ok, "decls=", len(decls), "diags=", diagnostics[:2])
+          PY
+
       - name: Lint
         run: uv run --no-sync ruff check .
 
