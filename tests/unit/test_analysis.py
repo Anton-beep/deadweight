@@ -352,3 +352,52 @@ def test_a_failed_translation_unit_contributes_nothing_and_is_counted() -> None:
         },
     ]
     assert [candidate.name for candidate in analysis.entry_points] == ["main"]
+
+
+USR_CTOR_CHAIN = "c:@N@topi@S@Service@F@Service#"
+USR_CTOR_CALLEE = "c:@N@topi@F@RegisterRoutes#"
+
+
+def test_a_constructor_makes_its_callees_live() -> None:
+    """What a constructor calls is production code, even if only a test constructs it.
+
+    Construction happens through paths a static graph cannot enumerate — a static
+    object, a member of another class, a temporary in a factory — so a helper reached
+    only from a constructor is reachable. Before this rule, topi's whole
+    route-registration chain (constructor → RegisterRoutes → lambda → handlers)
+    was reported test-only.
+    """
+    decls = [
+        make_decl(USR_CTOR_CHAIN, "Service", line=10, kind="constructor"),
+        make_decl(USR_CTOR_CALLEE, "RegisterRoutes", line=30),
+    ]
+    facts = make_facts(
+        decls=decls,
+        refs=[
+            make_ref(USR_CTOR_CHAIN, tu="tests/unit/service_test.cpp", line=7),
+            make_ref(USR_CTOR_CALLEE, tu="client/a.cpp", line=12),
+        ],
+    )
+
+    result = analyze([facts], PROD_ROOTS, TEST_ROOTS)
+
+    assert [candidate.name for candidate in result.candidates] == []
+    assert [candidate.name for candidate in result.special_members] == ["Service"]
+
+
+def test_a_constructor_does_not_hide_a_test_only_callee() -> None:
+    """Liveness flows out of the constructor, not into it."""
+    decls = [
+        make_decl(USR_CTOR_CHAIN, "Service", line=10, kind="constructor"),
+        make_decl(USR_CTOR_CALLEE, "RegisterRoutes", line=30),
+    ]
+    facts = make_facts(
+        decls=decls,
+        refs=[make_ref(USR_CTOR_CHAIN, tu="tests/unit/service_test.cpp", line=7)],
+    )
+
+    result = analyze([facts], PROD_ROOTS, TEST_ROOTS)
+
+    # Nothing reaches it, so it is dead rather than test-only: the constructor's
+    # liveness reached its callees, and this function is not one of them.
+    assert [candidate.name for candidate in result.dead_anywhere] == ["RegisterRoutes"]

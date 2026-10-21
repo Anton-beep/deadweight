@@ -135,6 +135,19 @@ def is_dispatch_root(component: Component) -> bool:
     return "virtual" in component.markers
 
 
+def is_construction(component: Component) -> bool:
+    """True when this is a constructor or a destructor.
+
+    Construction and destruction happen through paths a static call graph cannot
+    enumerate: a static duration object, a member of another class, a temporary in a
+    factory, a container that reallocates. A body that only a constructor calls is
+    production code, and topi's tree is full of it — ``RegisterRoutes`` is called from
+    a constructor, and treating that edge as invisible reported the whole
+    route-registration chain as test-only.
+    """
+    return any(decl.kind in {"constructor", "destructor"} for decl in component.decls)
+
+
 def _walk(
     facts: list[Facts],
     components: dict[str, Component],
@@ -177,12 +190,24 @@ def _walk(
 
 
 def _fixpoint(components: dict[str, Component], evidence: _Evidence) -> set[str]:
-    """Add every entry point and dispatch root, then close over the call edges."""
+    """Add every entry point and dispatch root, then close over the call edges.
+
+    Constructors and destructors propagate liveness without being live themselves.
+    Their callees are production-reachable — a helper called from a constructor is
+    reached whenever the object is constructed anywhere — but a constructor that only
+    a test calls is still evidence worth reporting, so it keeps its own verdict and
+    lands in ``special_members``. Seeding it as live would answer both questions with
+    one answer and quietly drop a real test-only constructor from the report.
+    """
     live = set(evidence.roots)
     for usr, component in components.items():
         if "main" in component.names or is_dispatch_root(component):
             live.add(usr)
-    queue = deque(sorted(live))
+    seeds = set(live)
+    seeds.update(
+        usr for usr, component in components.items() if is_construction(component)
+    )
+    queue = deque(sorted(seeds))
     while queue:
         source = queue.popleft()
         for callee in sorted(evidence.edges.get(source, ())):
