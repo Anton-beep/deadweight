@@ -15,15 +15,14 @@ concurrency:
 jobs:
   checks:
     name: checks (libclang ${{ matrix.libclang }})
-    runs-on: ubuntu-24.04
+    # jammy, not noble: apt.llvm.org publishes no llvm-toolchain-noble-16, and the
+    # matrix exists to prove the tool against four real libclang releases. The
+    # distribution is not the subject; the library version is.
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
         libclang: ["16", "18", "20", "22"]
-    env:
-      # Every future front-end test reads the library from here rather than
-      # guessing what the distro installed.
-      DEADWEIGHT_LIBCLANG: /usr/lib/llvm-${{ matrix.libclang }}/lib/libclang.so.1
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +31,12 @@ jobs:
           curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh "${{ matrix.libclang }}"
-          test -e "$DEADWEIGHT_LIBCLANG"
+          # The soname differs between releases (libclang.so.1 on some, a versioned
+          # symlink on others), so the path is discovered and then handed to every
+          # test through the environment rather than guessed at.
+          lib=$(ls /usr/lib/llvm-${{ matrix.libclang }}/lib/libclang.so* | head -n 1)
+          test -n "$lib"
+          echo "DEADWEIGHT_LIBCLANG=$lib" >> "$GITHUB_ENV"
 
       - uses: astral-sh/setup-uv@v5
         with:
