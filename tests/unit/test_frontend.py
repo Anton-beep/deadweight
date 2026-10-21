@@ -76,7 +76,7 @@ def test_compile_commands_relative_include_resolves(
     unit = units[0]
     assert Path(unit.directory) == RELINC.resolve()
     assert Path(unit.path) == (RELINC / "src" / "rel.cpp").resolve()
-    assert unit.arguments == ["-std=c++17", "-Iinclude", "-c"]
+    assert unit.arguments == ["-std=c++17", "-Iinclude"]
 
     monkeypatch.chdir(REPO_ROOT)
     _, _, diagnostics, ok = libclang.parse(Path(unit.path), unit.arguments)
@@ -277,7 +277,7 @@ def test_an_arguments_entry_keeps_its_flags_and_drops_the_rest(tmp_path: Path) -
         TranslationUnit(
             path=str(tmp_path / "src" / "rel.cpp"),
             directory=str(tmp_path / "build"),
-            arguments=["-std=c++17", "-Iinclude", "-c"],
+            arguments=["-std=c++17", "-Iinclude"],
         ),
     ]
 
@@ -295,7 +295,7 @@ def test_a_launcher_before_the_compiler_is_dropped(tmp_path: Path) -> None:
         TranslationUnit(
             path=str(tmp_path / "src" / "rel.cpp"),
             directory=str(tmp_path),
-            arguments=["-std=c++17", "-Iinclude", "-c"],
+            arguments=["-std=c++17", "-Iinclude"],
         ),
     ]
 
@@ -313,7 +313,7 @@ def test_a_command_entry_is_split_like_a_shell(tmp_path: Path) -> None:
         TranslationUnit(
             path=str(tmp_path / "src" / "rel.cpp"),
             directory=str(tmp_path / "build"),
-            arguments=["-std=c++17", "-Iinclude", "-c"],
+            arguments=["-std=c++17", "-Iinclude"],
         ),
     ]
 
@@ -332,3 +332,102 @@ def test_a_malformed_compile_database_is_an_error(tmp_path: Path) -> None:
     database.write_text("{not json")
     with pytest.raises(frontend.CompileCommandsError):
         frontend.load_compile_commands(database)
+
+
+def test_compile_only_and_dependency_flags_are_dropped() -> None:
+    """The parser is handed no flag that asks for an artifact it never writes.
+
+    Both families are the ones every CMake database carries. ``-c`` and ``-MD -MF
+    x.d`` make clang warn on every unit, and that warning used to be reported as the
+    reason a unit "did not parse", which buried the real diagnostic.
+    """
+    arguments = [
+        "-std=c++23",
+        "-c",
+        "-MD",
+        "-MF",
+        "unit.d",
+        "-MT",
+        "unit.o",
+        "-o",
+        "unit.o",
+        "unit.cpp",
+    ]
+
+    assert frontend._arguments(arguments, Path("unit.cpp")) == ["-std=c++23"]  # noqa: SLF001
+
+
+class _Recording:
+    """A libclang stand-in that keeps the arguments of every parse it is asked for."""
+
+    version = "22.1.8"
+    banner = "clang version 22.1.8"
+
+    def __init__(self) -> None:
+        """Start with nothing recorded."""
+        self.seen: list[list[str]] = []
+
+    def parse(self, _path: Path, arguments: list[str]) -> tuple:
+        """Record the arguments and answer with an empty, successful unit."""
+        self.seen.append(list(arguments))
+        return [], [], [], True
+
+
+def test_a_resource_dir_reaches_the_parser(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A discovered resource directory is passed as a driver flag."""
+    parser = _Recording()
+    monkeypatch.setattr(frontend, "_libclang", lambda _path: parser)
+    unit = TranslationUnit(
+        path=str(tmp_path / "u.cpp"),
+        directory=str(tmp_path),
+        arguments=["-std=c++23"],
+    )
+
+    frontend.parse_unit(unit, None, "/usr/lib/clang/22")
+
+    assert parser.seen == [["-resource-dir=/usr/lib/clang/22", "-std=c++23"]]
+
+
+def test_an_entry_resource_dir_is_not_duplicated(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A compilation entry that names its own resource directory keeps it."""
+    parser = _Recording()
+    monkeypatch.setattr(frontend, "_libclang", lambda _path: parser)
+    unit = TranslationUnit(
+        path=str(tmp_path / "u.cpp"),
+        directory=str(tmp_path),
+        arguments=["-resource-dir=/opt/clang/18", "-std=c++23"],
+    )
+
+    frontend.parse_unit(unit, None, "/usr/lib/clang/22")
+
+    assert parser.seen == [["-resource-dir=/opt/clang/18", "-std=c++23"]]
+
+
+def test_a_unit_that_includes_a_builtin_header_parses(tmp_path: Path) -> None:
+    """The regression parity found: builtin headers must resolve.
+
+    A libclang shared library installed outside the clang package's prefix does not
+    know where ``stddef.h`` lives, and without the resource directory every real
+    translation unit fails with ``fatal error: 'stddef.h' file not found``.
+    """
+    source = tmp_path / "builtin.cpp"
+    source.write_text("#include <stddef.h>\nint f(size_t);\n", encoding="utf-8")
+    library = frontend._libclang(None)  # noqa: SLF001
+    resource = frontend.discover.resource_dir(library)
+    if resource is None:
+        pytest.skip("this host exposes no clang resource directory")
+    unit = TranslationUnit(
+        path=str(source),
+        directory=str(tmp_path),
+        arguments=["-std=c++23"],
+    )
+
+    result = frontend.parse_unit(unit, None, resource)
+
+    assert result.status == STATUS_OK, result.diags

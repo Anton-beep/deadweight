@@ -17,6 +17,7 @@ the operator the whole trail.
 
 from __future__ import annotations
 
+import glob
 import importlib.util
 import os
 import re
@@ -251,3 +252,96 @@ def _wheel_paths() -> list[str]:
         return []
     native = Path(next(iter(spec.submodule_search_locations))) / "native"
     return sorted(str(path) for path in native.glob("libclang*"))
+
+
+# Where a user points the tool at a resource directory when the search below cannot
+# find one. It exists because a distribution may ship libclang and clang's builtin
+# headers in prefixes the library knows nothing about: on this host
+# ``/usr/lib/libclang.so.22.1`` finds no ``stddef.h`` at all, while
+# ``/usr/lib/clang/22/include/stddef.h`` is present.
+_RESOURCE_ENV = "DEADWEIGHT_CLANG_RESOURCE_DIR"
+
+# The builtin header every real resource directory carries. Its presence is the only
+# test that distinguishes a clang resource directory from a directory called "clang".
+_RESOURCE_MARKER = ("include", "stddef.h")
+
+
+def resource_dir(
+    library: cindex.LibClang,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Answer the clang resource directory that holds the builtin headers.
+
+    libclang normally knows its own resource directory, but a shared library installed
+    outside the clang package's prefix does not: the C API exposes no "where are your
+    builtin headers" entry point, so the directory is recovered from the environment,
+    from the compiler on ``PATH``, or from the layout next to the library itself. A
+    caller that finds one passes ``-resource-dir=<dir>``, because without it every
+    translation unit that includes a standard header fails with
+    ``fatal error: 'stddef.h' file not found`` and the run refuses to report.
+
+    The order is explicit to implicit, and each candidate is validated by the marker
+    header rather than by its name: a wrong answer here is a run that cannot parse
+    anything, which is worse than the search taking one more step.
+    """
+    source = os.environ if env is None else env
+    explicit = source.get(_RESOURCE_ENV)
+    marker = Path(explicit, *_RESOURCE_MARKER) if explicit else None
+    if marker is not None and marker.is_file():
+        # An explicit answer is authoritative and checked first: preferring the
+        # library's own major version must never outrank the operator's directory.
+        return explicit
+    candidates = [
+        *_reported_resource_dirs(),
+        *_neighbouring_resource_dirs(library.path),
+    ]
+    major = library.version.split(".", 1)[0]
+    for path in sorted(candidates, key=lambda item: major not in item):
+        if Path(path, *_RESOURCE_MARKER).is_file():
+            return path
+    return None
+
+
+def _reported_resource_dirs() -> list[str]:
+    """What the compilers on ``PATH`` say their resource directory is."""
+    found: list[str] = []
+    for name in ("clang", "clang++"):
+        tool = shutil.which(name)
+        if tool is None:
+            continue
+        completed = subprocess.run(  # noqa: S603
+            [tool, "-print-resource-dir"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        text = completed.stdout.strip()
+        if completed.returncode == 0 and text:
+            found.append(text)
+    return found
+
+
+def _neighbouring_resource_dirs(library_path: str) -> list[str]:
+    """Resource directories that a shared-clang install places beside the library."""
+    root = Path(library_path).resolve().parent
+    patterns = (
+        root / "clang",
+        root / "llvm-*" / "lib" / "clang",
+        Path("/usr/lib/clang"),
+        Path("/usr/lib/llvm-*/lib/clang"),
+        Path("/usr/local/lib/clang"),
+        Path("/opt/homebrew/opt/llvm/lib/clang"),
+    )
+    found: list[str] = []
+    for pattern in patterns:
+        text = str(pattern)
+        if "*" in text:
+            found.extend(
+                # Globbing an absolute pattern that spans several prefixes is clearer
+                # than two nested Path.glob calls; the pattern is a module constant.
+                str(path) for path in glob.glob(text)  # noqa: PTH207
+            )
+        elif pattern.is_dir():
+            found.extend(str(path) for path in pattern.iterdir() if path.is_dir())
+    return found

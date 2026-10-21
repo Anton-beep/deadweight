@@ -43,6 +43,20 @@ _LIBRARIES: dict[str, cindex.LibClang] = {}
 _OUTPUT_FLAG = "-o"
 """The flag whose operand is a build artifact the scanner never wants."""
 
+_COMPILE_ONLY_FLAG = "-c"
+"""Compile-without-link. libclang parses either way and warns on the flag."""
+
+_DEPENDENCY_PREFIX = "-M"
+"""Dependency-file flags (``-MD``, ``-MMD``, ``-MF``, ``-MT``, …) all share it.
+
+Capitals matter: ``-march=native`` and the other lowercase ``-m`` switches are codegen
+options the parser still wants to see. A dependency request would have clang write or
+expect a file the scanner never produces, so the whole family is dropped.
+"""
+
+_DEPENDENCY_OPERAND_FLAGS = frozenset({"-MF", "-MT", "-MQ"})
+"""The dependency flags that take a following operand, which has to go with them."""
+
 
 class CompileCommandsError(Exception):
     """A compilation database the loader cannot use as written."""
@@ -103,18 +117,34 @@ def classify(
     return prod, test
 
 
-def parse_unit(unit: TranslationUnit, libclang_path: str | None = None) -> Facts:
+def parse_unit(
+    unit: TranslationUnit,
+    libclang_path: str | None = None,
+    resource_dir: str | None = None,
+) -> Facts:
     """Parse one unit from its entry's directory, and restore the caller's.
 
     This is the worker's whole body, deliberately importable so a test can run it in
     process. The ``finally`` matters as much as the ``chdir``: a unit that fails must
     not move the working directory of every unit parsed after it.
+
+    ``resource_dir`` is the clang resource directory that holds the builtin headers.
+    libclang normally supplies it itself, but a shared library installed outside the
+    clang package's prefix does not, and the result there is ``fatal error: 'stddef.h'
+    file not found`` on every unit that includes a standard header. When a directory
+    was found, and the entry asks for neither a resource directory of its own nor
+    ``-nostdinc``, it is passed explicitly.
     """
     library = _libclang(libclang_path)
+    arguments = unit.arguments
+    if resource_dir and not any(
+        argument.startswith(("-resource-dir", "-nostdinc")) for argument in arguments
+    ):
+        arguments = [f"-resource-dir={resource_dir}", *arguments]
     previous = Path.cwd()
     try:
         os.chdir(unit.directory)
-        decls, refs, diagnostics, ok = library.parse(Path(unit.path), unit.arguments)
+        decls, refs, diagnostics, ok = library.parse(Path(unit.path), arguments)
     except OSError as error:
         return _failed(unit, f"cannot parse {unit.path}: {error}")
     finally:
@@ -151,6 +181,7 @@ def scan(  # noqa: PLR0913
         message = f"jobs must be at least 1, got {jobs}"
         raise ValueError(message)
     library = _libclang(libclang_path)
+    resource = discover.resource_dir(library)
     results: dict[int, Facts] = {}
     pending: list[tuple[int, TranslationUnit, str]] = []
     for index, unit in enumerate(units):
@@ -160,7 +191,7 @@ def scan(  # noqa: PLR0913
             pending.append((index, unit, key))
         else:
             results[index] = cached
-    for index, parsed, key in _parse_all(pending, jobs, library.path):
+    for index, parsed, key in _parse_all(pending, jobs, library.path, resource):
         results[index] = parsed
         if use_cache and cache_dir and parsed.status == STATUS_OK:
             # The cache is an optimisation, so an unwritable directory costs the
@@ -174,6 +205,7 @@ def _parse_all(
     pending: list[tuple[int, TranslationUnit, str]],
     jobs: int,
     libclang_path: str,
+    resource_dir: str | None,
 ) -> Iterator[tuple[int, Facts, str]]:
     """Parse the cache misses in a spawned pool, one record per unit."""
     if not pending:
@@ -181,9 +213,17 @@ def _parse_all(
     # ``spawn`` and never ``fork``: libclang is already initialised in this process,
     # and forking after that can deadlock inside the AST library.
     context = multiprocessing.get_context("spawn")
-    with ProcessPoolExecutor(max_workers=jobs, mp_context=context) as pool:
+    with ProcessPoolExecutor(
+        max_workers=jobs,
+        mp_context=context,
+    ) as pool:
         futures = {
-            pool.submit(parse_unit, unit, libclang_path): (index, unit, key)
+            pool.submit(
+                parse_unit,
+                unit,
+                libclang_path,
+                resource_dir,
+            ): (index, unit, key)
             for index, unit, key in pending
         }
         for future in as_completed(futures):
@@ -257,6 +297,14 @@ def _arguments(tokens: list[str], source: Path) -> list[str]:
             # ``-o out.o`` and ``-oout.o`` both name an artifact this tool never
             # writes, and libclang refuses an output it was not asked to produce.
             index += 1 if len(token) > len(_OUTPUT_FLAG) else 2
+            continue
+        if token == _COMPILE_ONLY_FLAG:
+            index += 1
+            continue
+        if token.startswith(_DEPENDENCY_PREFIX):
+            index += 1
+            if token in _DEPENDENCY_OPERAND_FLAGS and index < len(tokens):
+                index += 1
             continue
         if not token.startswith("-") and Path(token).name == source.name:
             index += 1

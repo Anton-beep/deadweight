@@ -18,6 +18,7 @@ from deadweight import cindex, discover
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
 LDCONFIG_TEXT = """\
 \tlibclang-19.so.1 (libc6,x86-64) => /usr/lib/llvm-19/lib/libclang-19.so.1
@@ -268,3 +269,39 @@ def test_missing_required_symbol_is_a_load_error() -> None:
     assert LIBM is not None
     with pytest.raises(discover.LibClangError, match="does not export"):
         discover.load(LIBM)
+
+
+def _library() -> cindex.LibClang:
+    """A handle shaped like a discovered library, without loading anything."""
+    return cindex.LibClang(
+        path="/nonexistent/libclang.so",
+        version="22.1.8",
+        banner="clang version 22.1.8",
+        api={},
+    )
+
+
+def test_resource_dir_comes_from_the_environment(tmp_path: Path) -> None:
+    """An explicit resource directory wins, and is validated by its marker header."""
+    include = tmp_path / "include"
+    include.mkdir()
+    (include / "stddef.h").write_text("", encoding="utf-8")
+
+    found = discover.resource_dir(
+        _library(),
+        {"DEADWEIGHT_CLANG_RESOURCE_DIR": str(tmp_path)},
+    )
+
+    assert found == str(tmp_path)
+
+
+def test_resource_dir_ignores_a_markerless_directory(tmp_path: Path) -> None:
+    """A directory that merely is called 'clang' is not a resource directory."""
+    (tmp_path / "include").mkdir()
+
+    found = discover.resource_dir(
+        _library(),
+        {"DEADWEIGHT_CLANG_RESOURCE_DIR": str(tmp_path)},
+    )
+
+    assert found != str(tmp_path)

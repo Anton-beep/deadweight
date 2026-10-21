@@ -36,6 +36,10 @@ def test_under_any_matches_whole_path_components() -> None:
     assert under_any("/repo/client/core/a.cpp", ("client",))
     assert under_any("client/core/a.cpp", ("logging", "client"))
     assert not under_any("/repo/third_party/core/a.cpp", ("client",))
+    # A path relativised out of the scan root cannot be claimed by a root that merely
+    # shares a component name: this is the libwebrtc-header case parity found.
+    assert not under_any("../heavy/include/logging/event.h", ("client", "logging"))
+    assert under_any("../heavy/include/logging/event.h", ("../heavy",))
     assert not under_any("client2/a.cpp", ("client",))
     assert not under_any("client/a.cpp", ())
 

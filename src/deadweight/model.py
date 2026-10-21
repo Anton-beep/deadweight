@@ -214,9 +214,20 @@ class GcFacts:
 
 
 def path_under(path: str, root: str) -> bool:
-    """True when ``root`` appears as a whole component prefix of ``path``."""
+    """True when ``root`` appears as a whole component prefix of ``path``.
+
+    A relative path that starts with ``..`` has left the scan root, so no root can
+    claim it. Without this, a third-party header the facts spell as
+    ``../heavy/stage-webrtc/include/logging/event.h`` matches the production root
+    ``logging`` and is reported as first-party — a scan of topi attributed 41 libwebrtc
+    headers to its own ``logging/`` tree before this rule existed.
+    """
     parts = Path(path).parts
     root_parts = Path(root).parts
+    escaped = not Path(path).is_absolute() and parts[:1] == ("..",)
+    if escaped and root_parts[:1] != ("..",):
+        # The path left the scan root, and this root does not itself start outside it.
+        return False
     if not root_parts:
         return False
     return any(
