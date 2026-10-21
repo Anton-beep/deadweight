@@ -31,12 +31,17 @@ jobs:
           curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh "${{ matrix.libclang }}"
-          # The soname differs between releases (libclang.so.1 on some, a versioned
-          # symlink on others), so the path is discovered and then handed to every
-          # test through the environment rather than guessed at.
-          lib=$(ls /usr/lib/llvm-${{ matrix.libclang }}/lib/libclang.so* | head -n 1)
+          # llvm.sh does not pull the libclang runtime on every release, and Debian
+          # installs it under a multiarch directory as often as under llvm-N/lib. Both
+          # packages are asked for by name, then the soname is discovered rather than
+          # guessed: it is libclang.so / libclang.so.1 / libclang-N.so.1 depending on
+          # the release and the packager.
+          sudo apt-get install -y "libclang1-${{ matrix.libclang }}" "libclang-${{ matrix.libclang }}-dev"
+          lib=$(ls /usr/lib/llvm-${{ matrix.libclang }}/lib/libclang.so* \
+                   /usr/lib/*/libclang*${{ matrix.libclang }}.so* 2>/dev/null | head -n 1)
           test -n "$lib"
           echo "DEADWEIGHT_LIBCLANG=$lib" >> "$GITHUB_ENV"
+          "$lib" --version 2>/dev/null || true
 
       - uses: astral-sh/setup-uv@v5
         with:
