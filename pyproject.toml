@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "deadweight"
-version = "0.1.0"
+version = "0.1.1"
 description = "Find C and C++ functions that only your tests reach."
 readme = "README.md"
 requires-python = ">=3.11"

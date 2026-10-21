@@ -9,7 +9,7 @@ from __future__ import annotations
 
 __all__ = ["FACTS_VERSION", "REPORT_SCHEMA", "__version__"]
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 REPORT_SCHEMA = "deadweight.report/1"
 
