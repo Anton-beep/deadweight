@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-authors = [{ name = "the deadweight authors" }]
+authors = [{ name = "Anton-beep" }]
 keywords = ["c", "cpp", "dead-code", "libclang", "static-analysis"]
 classifiers = [
   "Development Status :: 3 - Alpha",
