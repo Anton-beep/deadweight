@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tomllib
+from pathlib import Path
 
 import deadweight
+
+_ROOT = Path(__file__).resolve().parents[2]
 
 _PROBE = """
 import json
@@ -24,8 +28,11 @@ print(json.dumps(sorted(roots)))
 
 
 def test_version_is_the_release_version() -> None:
-    """The package reports its own release version."""
-    assert deadweight.__version__ == "0.1.0"
+    """The package reports the version its own metadata declares, not a copy of it."""
+    declared = tomllib.loads(
+        (_ROOT / "pyproject.toml").read_text(encoding="utf-8"),
+    )["project"]["version"]
+    assert deadweight.__version__ == declared
 
 
 def test_report_schema_versions_independently_of_the_package() -> None:
