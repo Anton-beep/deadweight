@@ -22,16 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 16 is the API floor — `clang_CXXMethod_isDeleted` first appears there — but
-        # the jammy leg fails one test with ASTReadError while parsing the builtin
-        # header, which is a packaging difference this workflow cannot settle. It runs
-        # and reports; it does not block a release until that is understood.
-        include:
-          - {libclang: "16", experimental: true}
-          - {libclang: "18", experimental: false}
-          - {libclang: "20", experimental: false}
-          - {libclang: "22", experimental: false}
-    continue-on-error: ${{ matrix.experimental }}
+        libclang: ["16", "18", "20", "22"]
     steps:
       - uses: actions/checkout@v4
 

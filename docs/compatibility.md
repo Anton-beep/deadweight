@@ -98,3 +98,9 @@ sudo apt-get install -y libclang1-18 libclang-18-dev libclang-common-18-dev
 ```
 
 `deadweight doctor` prints the library it chose and the version it reports, which is usually enough to see that the wrong package set is installed.
+
+## A rejected `-std` looks like an AST failure
+
+libclang 16 does not know the `-std=c++23` spelling (it has `-std=c++2b`), and when a compilation entry asks for a dialect the library predates, `clang_parseTranslationUnit2` answers `CXErrorCode 4` — the "AST read" code — with no diagnostic attached. The run then reports every such unit as unparsable, which reads like a missing package or a corrupt library rather than an unsupported flag.
+
+The tool passes the entry's flags through unchanged, because rewriting a dialect is not its decision to make. If a scan reports `CXErrorCode 4` for every unit on an older library, check the standard in the compilation database first; `deadweight doctor` prints the library version, and the version is the answer.

@@ -416,6 +416,12 @@ def test_a_unit_that_includes_a_builtin_header_parses(tmp_path: Path) -> None:
     A libclang shared library installed outside the clang package's prefix does not
     know where ``stddef.h`` lives, and without the resource directory every real
     translation unit fails with ``fatal error: 'stddef.h' file not found``.
+
+    The dialect is C++17 on purpose: libclang 16 does not know the ``-std=c++23``
+    spelling, and it reports the driver's refusal as ``CXErrorCode 4``, which reads
+    like an AST or packaging failure. The tool passes through whatever dialect the
+    compilation database carries, so a library that predates a spelling rejects it —
+    this test is about the builtin headers, not about the newest standard.
     """
     source = tmp_path / "builtin.cpp"
     source.write_text("#include <stddef.h>\nint f(size_t);\n", encoding="utf-8")
@@ -426,7 +432,7 @@ def test_a_unit_that_includes_a_builtin_header_parses(tmp_path: Path) -> None:
     unit = TranslationUnit(
         path=str(source),
         directory=str(tmp_path),
-        arguments=["-std=c++23"],
+        arguments=["-std=c++17"],
     )
 
     result = frontend.parse_unit(unit, None, resource)
