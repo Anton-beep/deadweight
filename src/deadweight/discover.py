@@ -296,7 +296,13 @@ def resource_dir(
         *_neighbouring_resource_dirs(library.path),
     ]
     major = library.version.split(".", 1)[0]
-    for path in sorted(candidates, key=lambda item: major not in item):
+    matching = [path for path in candidates if major and major in path]
+    # A resource directory from another major version is worse than none: its builtin
+    # headers make libclang 16 reject a translation unit with ASTReadError, and the
+    # run then reports every unit as unparsable. When the library's major is known, a
+    # directory that does not name it is not a candidate at all.
+    considered = matching or ([] if major.isdigit() else candidates)
+    for path in considered:
         if Path(path, *_RESOURCE_MARKER).is_file():
             return path
     return None
